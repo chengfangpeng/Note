@@ -5,6 +5,32 @@ RecyclerView中有许多神奇的特性，比如局部刷新，它不仅可以�
 
 
 
+RecyclerView为了应对局部刷新提供了下面几个方法：
+
+- mAdapter.notifyItemChanged(position)
+- mAdapter.notifyItemInserted(position)
+- mAdapter.notifyItemRemoved(position)
+- mAdapter.notifyItemMoved(fromPosition, toPosition)
+
+为了对数据集的改动还提供了notifyRange**系列的方法。但是这些方法在DiffUtil类出现之前其实使用的场景很有限。大部分情况都是直接的调用notifyDataSetChanged()方法。但是这个方法有一些明显的缺点：
+
+- 不会触发Item动画
+- 对整个可见区域进行刷新
+
+## DiffUtil实现局部刷新
+
+上面说到其实RecyclerView是有提供局部刷新的方法的，但是这些方法很少被用到，原因是我们没有一个高效处理新旧数据差异的方法，直到DiffUtil类的出现。使用的话只需要关注两个类:
+
+- DiffUtil.Callback 需要我们实现这个类，返回我们的diff规则
+
+- DiffUtil.DiffResult 这个类是diff结果类
+
+
+
+
+
+
+
 ## Diff算法
 在上面使用RecyclerView做局部刷新的时候，使用了一个DiffUtil工具类。那么这个工具类是基于什么样的算法实现的？
 要讲明白这个问题需先介绍一些概念
@@ -90,4 +116,3 @@ LCS是两个字符串中去掉一些字符后，所产生的共有的最长的�
    通俗的理解就是一个问题的解决，依赖其子问题的最优解。
 
 #### 代码实现
-    
