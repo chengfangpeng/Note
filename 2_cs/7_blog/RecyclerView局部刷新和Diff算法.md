@@ -277,3 +277,4 @@ public class DiffSample {
 
  2. [简析Myers](https://juejin.im/post/5b0bbc806fb9a00a1451c058)
  3. [论文](http://xmailserver.org/diff2.pdf)
+ 4. [贪婪算法](https://time.geekbang.org/column/article/73188)
