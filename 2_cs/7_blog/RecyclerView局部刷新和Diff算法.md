@@ -104,20 +104,39 @@ DiffUtil.DiffResult 保存了通过 DiffUtil.Callback 计算出来，两个数�
 
 #### 算法过程
 
- 还是用上面那张图为例。
+ 将上面那张图做个变换，得到下面的图:
+
+ ![变换图](assets/diff_2.png)
+
  我们从坐标(0, 0)开始，此时，d=0，k=0，然后逐步增加d，计算每个k值下对应的最优坐标。
 
  因为每一步要么向右（x + 1），要么向下（y + 1），要么就是对角线（x和y都+1)，所以，当d=1时，k只可能有两个取值，要么是1，要么是-1。
+ - 当d=1
 
- 当d=1，k=1时，最优坐标是(1, 0)。
- 当d=1，k=-1时，最优坐标是(0, 1)。
- 因为d=1时，k要么是1，要么是-1，当d=2时，表示在d=1的基础上再走一步，k只有三个可能的取值，分别是-2，0，2。
+   k=1时，最优坐标是(1, 0)。
 
- 当d=2，k=-2时，最优坐标是(2, 4)。
+   k=-1时，最优坐标是(0, 1)。
 
- 当d=2，k=0时，最优坐标是(2, 2)。
+   因为d=1时，k要么是1，要么是-1，当d=2时，表示在d=1的基础上再走一步，k只有三个可能的取值，分别是-2，0，2。
 
- 当d=2，k=2时，最优坐标是(3, 1)。
+ - 当d=2   
+
+   k=-2时，最优坐标是(2, 4)。
+   k=0时，最优坐标是(2, 2)。
+   k=2时，最优坐标是(3, 1)。
+   因为d=2时， k的取值是-2, 0, 2,所以当d=3时，表示只能在d=2的基础上再走一步。k的取值为 -3， -1， 1， 3
+
+ - 当d=3
+
+    k = -3时, 只能从k=-2向下移动，即(2, 4)向下移动至(2, 5)经斜线至(3, 6)，所以最优坐标是(3, 6)
+
+    k = -1时，​可以由k=-2向右移动，即(2, 4)向右移动至(3, 4)经斜线至(4, 5)
+    ​也可由k=0向下移动，即(2, 2)向下移动至(2, 3)
+    ​因为同样在k = -1线上，(4, 5)比(2, 3)更远，所以最优坐标是(4, 5)
+
+    k = 1时， 可以由k = 0向右移动，即(2, 2)向右移动至(3, 2)经斜线至(5, 4)， 也可由k = 2向下移动，即(3, 1)向下移动至(3, 2)经斜线 至(5, 4)，所以最优坐标是(5, 4)
+
+    k = 3时, 只能从 k = 2 向右移动，即(3, 1)向右移动至(4, 1)经斜线至(5, 2),所以最优坐标是(5, 2)
 
  以此类推，直到我们找到一个d和k值，达到最终的目标坐标(7, 6)。
 
@@ -150,39 +169,36 @@ public class DiffSample {
             System.out.println("D:" + d);
             for (int k = -d; k <= d; k += 2) {
                 System.out.print("k:" + k);
-                // down or right?
+                // 向下 or 向右?
                 boolean down = (k == -d || (k != d && v[k - 1 + max] < v[k + 1 + max]));
                 int kPrev = down ? k + 1 : k - 1;
 
-                // start point
+                // 开始坐标
                 int xStart = v[kPrev + max];
                 int yStart = xStart - kPrev;
 
-                // mid point
+                // 中间坐标
                 int xMid = down ? xStart : xStart + 1;
                 int yMid = xMid - k;
 
-                // end point
+                // 终止坐标
                 int xEnd = xMid;
                 int yEnd = yMid;
 
-                // follow diagonal
                 int snake = 0;
                 while (xEnd < aa.length && yEnd < bb.length && aa[xEnd] == bb[yEnd]) {
                     xEnd++;
                     yEnd++;
                     snake++;
                 }
-                // save end point
+                // 保存最终点
                 v[k + max] = xEnd;
-                // record a snake
+                // 记录 snake
                 snakes.add(0, new Snake(xStart, yStart, xEnd, yEnd));
                 System.out.print(", start:(" + xStart + "," + yStart + "), mid:(" + xMid + "," + yMid + "), end:(" + xEnd + "," + yEnd + ")\n");
-                // check for solution
+                // 检查结果
                 if (xEnd >= aa.length && yEnd >= bb.length) {
-                    /* solution has been found */
                     System.out.println("found");
-                    /* print the snakes */
                     Snake current = snakes.get(0);
                     System.out.println(String.format("(%2d, %2d)<-(%2d, %2d)", current.getxEnd(), current.getyEnd(), current.getxStart(), current.getyStart()));
                     for (int i = 1; i < snakes.size(); i++) {
