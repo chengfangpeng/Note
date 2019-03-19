@@ -17,3 +17,4 @@
 - 如何将measure和layout放在异步线程中执行,参考[PrecomputedText](https://developer.android.com/reference/android/text/PrecomputedText)
 - 优化RecyclerView, 使用facebook开源的Litho中的RecyclerCollectionComponent和Sections
 - apk包的压缩
+- Android中的ContextImpl和装饰器模式

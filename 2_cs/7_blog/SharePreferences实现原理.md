@@ -14,3 +14,8 @@
 https://blog.csdn.net/yueqian_scut/article/details/51477760
 https://cloud.tencent.com/developer/article/1179555
 http://gityuan.com/2017/06/18/SharedPreferences/
+
+
+## 前言
+
+SharedPreferences可能是我们用的最多的Android键值对存储工具了。但是它对我们来说熟悉而又陌生，熟悉是因为它使用足够简单，陌生是因为它有所谓的“七宗罪”在性能和多进程方面有定的问题。下面我会结合源码把我们在使用中遇到的各种问题一一的解开
