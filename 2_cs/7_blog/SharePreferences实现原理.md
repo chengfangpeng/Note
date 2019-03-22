@@ -48,7 +48,7 @@ public static SharedPreferences getDefaultSharedPreferences(Context context) {
 
 ## 2.3. ContextImpl中获取并创建SharedPreferences
 
-虽然上面获取SharedPreferences的方式很多，但是他们最终都会调用到ContextImpl.getSharedPreferences的方法，并且 SharedPreferences真正的创建也是在这里，下面上代码。
+虽然上面获取SharedPreferences的方式很多，但是他们最终都会调用到ContextImpl.getSharedPreferences的方法，并且 SharedPreferences真正的创建也是在这里，g关于ContextImpl和Activity、Service等的关系，我会另外写篇文章介绍，其实使用的是装饰器模式.
 
 #### 2.3.1 getSharedPreferences(String name, int mode)
 
