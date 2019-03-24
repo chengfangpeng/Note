@@ -197,9 +197,137 @@ SharedPreferencesImpl(File file, int mode) {
         mMode = mode;
         mLoaded = false;
         mMap = null;
+        //[见2.3.8]
         startLoadFromDisk();
     }
 
 ```
 
 #### 2.3.7
+
+
+#### 2.3.8 startLoadFromDisk()
+
+这个方法的主要目的就是加载xml文件到mFile对象中，同时为了保证这个加载过程为异步操作，这个地方使用了线程。另外当xml文件未加载时，SharedPreferences的getString(),edit()等方法都会处于阻塞状态(阻塞和挂起的区别...）,直到mLoaded的状态变为true,后面的分析会验证这一点。
+
+```
+private void startLoadFromDisk() {
+       synchronized (mLock) {
+           mLoaded = false;
+       }
+       new Thread("SharedPreferencesImpl-load") {
+           public void run() {
+                //使用线程去加载xml
+               loadFromDisk();
+           }
+       }.start();
+   }
+
+
+   private void loadFromDisk() {
+       synchronized (mLock) {
+           if (mLoaded) {
+               return;
+           }
+           if (mBackupFile.exists()) {
+               mFile.delete();
+               mBackupFile.renameTo(mFile);
+           }
+       }
+
+       // Debugging
+       if (mFile.exists() && !mFile.canRead()) {
+           Log.w(TAG, "Attempt to read preferences file " + mFile + " without permission");
+       }
+
+       Map map = null;
+       StructStat stat = null;
+       try {
+           stat = Os.stat(mFile.getPath());
+           if (mFile.canRead()) {
+               BufferedInputStream str = null;
+               try {
+                   str = new BufferedInputStream(
+                           new FileInputStream(mFile), 16*1024);
+                    //从xml中全量读取内容，保存在内存中
+                   map = XmlUtils.readMapXml(str);
+               } catch (Exception e) {
+                   Log.w(TAG, "Cannot read " + mFile.getAbsolutePath(), e);
+               } finally {
+                   IoUtils.closeQuietly(str);
+               }
+           }
+       } catch (ErrnoException e) {
+           /* ignore */
+       }
+
+       synchronized (mLock) {
+           mLoaded = true;
+           if (map != null) {
+               mMap = map;
+               mStatTimestamp = stat.st_mtime;
+               mStatSize = stat.st_size;
+           } else {
+               mMap = new HashMap<>();
+           }
+           mLock.notifyAll();
+       }
+   }
+
+```
+这样SharedPreference的实例创建已经完成了。下面分析获取数据和添加数据的流程。
+
+# 3. SharedPreferences获取数据
+
+前面的章节已经成功的创建了SharedPreferences实例，下面看看怎么使用它来获取数据，下面以getString为例分析。
+
+
+## 3.1 getString()
+
+```
+@Nullable
+   public String getString(String key, @Nullable String defValue) {
+       synchronized (mLock) {
+            //阻塞判断，需要等到数据从xml中加载到内存中，才会继续执行[见3.2]
+           awaitLoadedLocked();
+           //直接从内存中获取数据
+           String v = (String)mMap.get(key);
+           return v != null ? v : defValue;
+       }
+   }
+
+```
+
+## 3.2 awaitLoadedLocked()
+
+```
+
+private void awaitLoadedLocked() {
+       if (!mLoaded) {
+           // Raise an explicit StrictMode onReadFromDisk for this
+           // thread, since the real read will be in a different
+           // thread and otherwise ignored by StrictMode.
+           //关于[StrictMode](http://duanqz.github.io/2015-11-04-StrictMode-Analysis#23-strictmode-penalty),可以查看这篇文章
+           BlockGuard.getThreadPolicy().onReadFromDisk();
+       }
+       while (!mLoaded) {
+           try {
+               mLock.wait();
+           } catch (InterruptedException unused) {
+           }
+       }
+   }
+
+从上面的操作可以看出当mLoaded为false时，也就是内容没有从xml文件中加载到内存时，该方法一直会处于阻塞状态。   
+
+
+```
+
+# 4. SharedPreferences数据添加和修改
+
+如同SharedPreferences和SharedPreferencesImpl,SharedPreferences中还有个Editor和EditorImpl，它们的作用用于我们添加数据和修改数据。但是这里要注意，我们对Editor做操作，其实只在内存层面，并不会作用到xml中，当SharedPreferences调用了edit()方法后才会真正的执行写操作，下面我们验证这些问题。
+
+
+
+
+# 5. SharedPreferences数据提交
