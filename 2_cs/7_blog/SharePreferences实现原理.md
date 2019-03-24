@@ -14,3 +14,11 @@
 https://blog.csdn.net/yueqian_scut/article/details/51477760
 https://cloud.tencent.com/developer/article/1179555
 http://gityuan.com/2017/06/18/SharedPreferences/
+
+
+> 细推物理须行乐,何用浮名绊此身
+
+## 前言
+SharedPreferences是Android轻量级的键值对存储方式。对于开发者来说它的使用非常的方便，但是也是一种被大家诟病很多的一种存储方式。下面我会提出一些平时在使用SharedPreferences中遇到的问题，然后通过SharedPreferences的源码，一步步的拨云见日。
+
+## SharedPreferences问题总结
