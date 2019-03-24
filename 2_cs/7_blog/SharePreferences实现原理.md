@@ -330,10 +330,154 @@ private void awaitLoadedLocked() {
 
 # 4. SharedPreferences数据添加和修改
 
-如同SharedPreferences和SharedPreferencesImpl,SharedPreferences中还有个Editor和EditorImpl，它们的作用用于我们添加数据和修改数据。但是这里要注意，我们对Editor做操作，其实只在内存层面，并不会作用到xml中，当SharedPreferences调用了edit()方法后才会真正的执行写操作，下面我们验证这些问题。
+如同SharedPreferences和SharedPreferencesImpl,SharedPreferences中还有个Editor和EditorImpl，它们的作用用于我们添加数据和修改数据。但是这里要注意，我们对Editor做操作，其实只是把数据保存在Editor的一个成员变量中，真正把数据更新到SharedPreferencesImpl并且写入文件是在Editor的commit或者apply方法被调用之后，下面我们验证这些问题。
+
+## 4.1 EditorImpl的实现
+
+```
+public final class EditorImpl implements Editor {
+        private final Object mLock = new Object();
+
+        @GuardedBy("mLock")
+        private final Map<String, Object> mModified = Maps.newHashMap();
+
+        @GuardedBy("mLock")
+        private boolean mClear = false;
+
+        public Editor putString(String key, @Nullable String value) {
+            synchronized (mLock) {
+                //Editor的put操作，这是把数据添加到mModified这个成员变量中，并未写入文件
+                mModified.put(key, value);
+                return this;
+            }
+        }
+        public Editor putStringSet(String key, @Nullable Set<String> values) {
+            synchronized (mLock) {
+                mModified.put(key,
+                        (values == null) ? null : new HashSet<String>(values));
+                return this;
+            }
+        }
+        public Editor putInt(String key, int value) {
+            synchronized (mLock) {
+                mModified.put(key, value);
+                return this;
+            }
+        }
+        public Editor putLong(String key, long value) {
+            synchronized (mLock) {
+                mModified.put(key, value);
+                return this;
+            }
+        }
+        public Editor putFloat(String key, float value) {
+            synchronized (mLock) {
+                mModified.put(key, value);
+                return this;
+            }
+        }
+        public Editor putBoolean(String key, boolean value) {
+            synchronized (mLock) {
+                mModified.put(key, value);
+                return this;
+            }
+        }
+
+        public Editor remove(String key) {
+            synchronized (mLock) {
+                mModified.put(key, this);
+                return this;
+            }
+        }
+
+        public Editor clear() {
+            synchronized (mLock) {
+                mClear = true;
+                return this;
+            }
+        }
+    }
+
+```
+
+## 4.2 commit和apply
+
+commit和apply是Editor中的方法，实现在EditorImpl中，那么他们两有什么区别，又是怎么实现的呢？首先，他们两最大的区别是commit是一个同步方法，它有一个boolean类型的返回值，而apply是一个异步方法，没有返回值。简单理解就是，commit需要等待提交结果，而apply不需要。所以commit以牺牲一定的性能而换来准确性的提高。另外一点就是对于apply方法，我们不用担心Android组件的生命周期会对它造成的影响，底层的框架帮我们做了处理，至于怎么做的，笔者也没弄明白（关于这个结论，大家可以看apply方法的注释）。上面说了这么多的结论，下面我们看看实现，来验证一下我们的结论。
+
+#### 4.2.1 commit
+
+
+```
+public boolean commit() {
+           long startTime = 0;
+
+           if (DEBUG) {
+               startTime = System.currentTimeMillis();
+           }
+
+           MemoryCommitResult mcr = commitToMemory();
+
+           SharedPreferencesImpl.this.enqueueDiskWrite(
+               mcr, null /* sync write on this thread okay */);
+           try {
+               mcr.writtenToDiskLatch.await();
+           } catch (InterruptedException e) {
+               return false;
+           } finally {
+               if (DEBUG) {
+                   Log.d(TAG, mFile.getName() + ":" + mcr.memoryStateGeneration
+                           + " committed after " + (System.currentTimeMillis() - startTime)
+                           + " ms");
+               }
+           }
+           notifyListeners(mcr);
+           return mcr.writeToDiskResult;
+       }
+
+
+```
+
+#### 4.2.2 apply
+
+
+```
+public void apply() {
+          final long startTime = System.currentTimeMillis();
+
+          final MemoryCommitResult mcr = commitToMemory();
+          final Runnable awaitCommit = new Runnable() {
+                  public void run() {
+                      try {
+                          mcr.writtenToDiskLatch.await();
+                      } catch (InterruptedException ignored) {
+                      }
+
+                      if (DEBUG && mcr.wasWritten) {
+                          Log.d(TAG, mFile.getName() + ":" + mcr.memoryStateGeneration
+                                  + " applied after " + (System.currentTimeMillis() - startTime)
+                                  + " ms");
+                      }
+                  }
+              };
+
+          QueuedWork.addFinisher(awaitCommit);
+
+          Runnable postWriteRunnable = new Runnable() {
+                  public void run() {
+                      awaitCommit.run();
+                      QueuedWork.removeFinisher(awaitCommit);
+                  }
+              };
+
+          SharedPreferencesImpl.this.enqueueDiskWrite(mcr, postWriteRunnable);
+
+          // Okay to notify the listeners before it's hit disk
+          // because the listeners should always get the same
+          // SharedPreferences instance back, which has the
+          // changes reflected in memory.
+          notifyListeners(mcr);
+      }
 
 
 
-
-# 5. SharedPreferences数据提交
-
+```
