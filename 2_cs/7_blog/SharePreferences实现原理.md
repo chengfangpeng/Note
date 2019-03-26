@@ -414,12 +414,13 @@ public boolean commit() {
            if (DEBUG) {
                startTime = System.currentTimeMillis();
            }
-
+           //将数据保存在内存中[见4.2.3]
            MemoryCommitResult mcr = commitToMemory();
-
+          //同步将数据写到硬盘中[见4.2.4]
            SharedPreferencesImpl.this.enqueueDiskWrite(
                mcr, null /* sync write on this thread okay */);
            try {
+
                mcr.writtenToDiskLatch.await();
            } catch (InterruptedException e) {
                return false;
@@ -430,6 +431,7 @@ public boolean commit() {
                            + " ms");
                }
            }
+           //用于onSharedPreferenceChanged的回调提醒
            notifyListeners(mcr);
            return mcr.writeToDiskResult;
        }
@@ -443,7 +445,7 @@ public boolean commit() {
 ```
 public void apply() {
           final long startTime = System.currentTimeMillis();
-
+          //将数据保存在内存中[见4.2.3]
           final MemoryCommitResult mcr = commitToMemory();
           final Runnable awaitCommit = new Runnable() {
                   public void run() {
@@ -478,6 +480,128 @@ public void apply() {
           notifyListeners(mcr);
       }
 
+```
 
+#### 4.2.3 commitToMemory
+
+
+```
+private MemoryCommitResult commitToMemory() {
+           long memoryStateGeneration;
+           List<String> keysModified = null;
+           Set<OnSharedPreferenceChangeListener> listeners = null;
+           Map<String, Object> mapToWriteToDisk;
+
+           synchronized (SharedPreferencesImpl.this.mLock) {
+               // We optimistically don't make a deep copy until
+               // a memory commit comes in when we're already
+               // writing to disk.
+               if (mDiskWritesInFlight > 0) {
+                   // We can't modify our mMap as a currently
+                   // in-flight write owns it.  Clone it before
+                   // modifying it.
+                   // noinspection unchecked
+                   mMap = new HashMap<String, Object>(mMap);
+               }
+               mapToWriteToDisk = mMap;
+               mDiskWritesInFlight++;
+
+               boolean hasListeners = mListeners.size() > 0;
+               if (hasListeners) {
+                   keysModified = new ArrayList<String>();
+                   listeners = new HashSet<OnSharedPreferenceChangeListener>(mListeners.keySet());
+               }
+
+               synchronized (mLock) {
+                   boolean changesMade = false;
+
+                   if (mClear) {
+                       if (!mMap.isEmpty()) {
+                           changesMade = true;
+                           mMap.clear();
+                       }
+                       mClear = false;
+                   }
+
+                   for (Map.Entry<String, Object> e : mModified.entrySet()) {
+                       String k = e.getKey();
+                       Object v = e.getValue();
+                       // "this" is the magic value for a removal mutation. In addition,
+                       // setting a value to "null" for a given key is specified to be
+                       // equivalent to calling remove on that key.
+                       if (v == this || v == null) {
+                           if (!mMap.containsKey(k)) {
+                               continue;
+                           }
+                           mMap.remove(k);
+                       } else {
+                           if (mMap.containsKey(k)) {
+                               Object existingValue = mMap.get(k);
+                               if (existingValue != null && existingValue.equals(v)) {
+                                   continue;
+                               }
+                           }
+                           mMap.put(k, v);
+                       }
+
+                       changesMade = true;
+                       if (hasListeners) {
+                           keysModified.add(k);
+                       }
+                   }
+
+                   mModified.clear();
+
+                   if (changesMade) {
+                       mCurrentMemoryStateGeneration++;
+                   }
+
+                   memoryStateGeneration = mCurrentMemoryStateGeneration;
+               }
+           }
+           return new MemoryCommitResult(memoryStateGeneration, keysModified, listeners,
+                   mapToWriteToDisk);
+       }
+
+```
+
+#### enqueueDiskWrite
+
+
+```
+private void enqueueDiskWrite(final MemoryCommitResult mcr,
+                                 final Runnable postWriteRunnable) {
+       final boolean isFromSyncCommit = (postWriteRunnable == null);
+
+       final Runnable writeToDiskRunnable = new Runnable() {
+               public void run() {
+                   synchronized (mWritingToDiskLock) {
+                      //将
+                       writeToFile(mcr, isFromSyncCommit);
+                   }
+                   synchronized (mLock) {
+                       mDiskWritesInFlight--;
+                   }
+                   if (postWriteRunnable != null) {
+                       postWriteRunnable.run();
+                   }
+               }
+           };
+
+       // Typical #commit() path with fewer allocations, doing a write on
+       // the current thread.
+       if (isFromSyncCommit) {
+           boolean wasEmpty = false;
+           synchronized (mLock) {
+               wasEmpty = mDiskWritesInFlight == 1;
+           }
+           if (wasEmpty) {
+               writeToDiskRunnable.run();
+               return;
+           }
+       }
+
+       QueuedWork.queue(writeToDiskRunnable, !isFromSyncCommit);
+   }
 
 ```
