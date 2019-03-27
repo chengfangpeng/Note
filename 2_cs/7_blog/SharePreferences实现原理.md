@@ -1,28 +1,14 @@
-# SP提纲
-
-1. SP为什么进程不安全，MODE_MULTI_PROCESS是啥。
-2. SP为什么加载速度慢，为什么会出现主线程等待低优先级线程锁问题，怎么预加载SP文件
-3. SP为什么是全量写入
-4. 什么是异地落盘的apply机制，它为什么会造成ANR
-5. 怎么替换系统的SP
-6. SP的替代者MMKV介绍
-7. commit和apply的区别
-8.　QueuedWork原理介绍
-9. CountDownLatch的使用
-
-
-https://blog.csdn.net/yueqian_scut/article/details/51477760
-https://cloud.tencent.com/developer/article/1179555
-http://gityuan.com/2017/06/18/SharedPreferences/
-
 
 
 > 细推物理须行乐,何用浮名绊此身
 
-## 前言
-SharedPreferences是Android轻量级的键值对存储方式。对于开发者来说它的使用非常的方便，但是也是一种被大家诟病很多的一种存储方式。下面我会提出一些平时在使用SharedPreferences中遇到的问题，然后通过SharedPreferences的源码，一步步的拨云见日。
-
-## SharedPreferences问题总结
+# 前言
+SharedPreferences（简称SP）是Android轻量级的键值对存储方式。对于开发者来说它的使用非常的方便，但是也是一种被大家诟病很多的一种存储方式。有所谓的七宗罪：
+1. SP进程不安全，即使使用MODE_MULTI_PROCESS
+2. 全量写入
+3. 加载缓慢
+4. 卡顿，apply异步落盘导致的anr
+带着这些结论我们一步步的从代码中找出它的依据，当然了，本文的内容不止如此，还包裹整个SharedPreferences的运行机理等，当然这一切都是我个人的理解，中间不免有错误的地方，也欢迎大家指证。
 
 
 # 2. SharedPreferences实例的获取
@@ -38,7 +24,7 @@ public SharedPreferences getSharedPreferences(String name, int mode) {
 
 ```
 
-因为我们的Activity,Service,Application都会继承ContextWrapper，所以它们也可以同样的获取SharedPreferences
+因为我们的Activity,Service,Application都会继承ContextWrapper，所以它们也可以获取到SharedPreferences
 
 
 ## 2.2 PreferenceManager中获取
@@ -50,10 +36,11 @@ public static SharedPreferences getDefaultSharedPreferences(Context context) {
   }
 
 ```
+通过PreferenceManager中静态方法获取，当然根据需求不通，PreferenceManager中还提供了别的方法，大家可以去查阅。
 
 ## 2.3. ContextImpl中获取并创建SharedPreferences
 
-虽然上面获取SharedPreferences的方式很多，但是他们最终都会调用到ContextImpl.getSharedPreferences的方法，并且 SharedPreferences真正的创建也是在这里，g关于ContextImpl和Activity、Service等的关系，我会另外写篇文章介绍，其实使用的是装饰器模式.
+虽然上面获取SharedPreferences的方式很多，但是他们最终都会调用到ContextImpl.getSharedPreferences的方法，并且 SharedPreferences真正的创建也是在这里，关于ContextImpl和Activity、Service等的关系，我会另外写篇文章介绍，其实使用的是装饰器模式.
 
 #### 2.3.1 getSharedPreferences(String name, int mode)
 
@@ -74,7 +61,7 @@ public SharedPreferences getSharedPreferences(String name, int mode) {
            if (mSharedPrefsPaths == null) {
                mSharedPrefsPaths = new ArrayMap<>();
            }
-           //从mSharedPrefsPaths查询文件
+           //从mSharedPrefsPaths缓存中查询文件
            file = mSharedPrefsPaths.get(name);
            if (file == null) {
                 //如果文件不存在，根据name创建 [见2.3.2]
@@ -234,6 +221,7 @@ private void startLoadFromDisk() {
            if (mLoaded) {
                return;
            }
+           //如果容灾文件存在,则使用容灾文件
            if (mBackupFile.exists()) {
                mFile.delete();
                mBackupFile.renameTo(mFile);
@@ -280,7 +268,7 @@ private void startLoadFromDisk() {
    }
 
 ```
-这样SharedPreference的实例创建已经完成了。下面分析获取数据和添加数据的流程。
+这样SharedPreference的实例创建已经完成了，并且我们也发现SharedPreference将从文件中读取的数据保存在了mMap的全局变量中，然后后面的读取操作其实都只是在mMap中拿数据了，下面分析获取数据和添加数据的流程。
 
 # 3. SharedPreferences获取数据
 
@@ -302,6 +290,7 @@ private void startLoadFromDisk() {
    }
 
 ```
+从这里我们可以验证当我们在上文中的结论，那就是在 SharedPreferences被创建后，我们所有的读取数据都是在内存中获取的，但是这里可能就有个疑问了，加入现在我们put一条数据，是否要重新加载一次文件呢，其实在单进程中是不需要的，但是在多进程中就可能需要了。下面我们继续带着这些疑惑去寻找答案。
 
 ## 3.2 awaitLoadedLocked()
 
@@ -330,7 +319,7 @@ private void awaitLoadedLocked() {
 
 # 4. SharedPreferences数据添加和修改
 
-如同SharedPreferences和SharedPreferencesImpl,SharedPreferences中还有个Editor和EditorImpl，它们的作用用于我们添加数据和修改数据。但是这里要注意，我们对Editor做操作，其实只是把数据保存在Editor的一个成员变量中，真正把数据更新到SharedPreferencesImpl并且写入文件是在Editor的commit或者apply方法被调用之后，下面我们验证这些问题。
+如同SharedPreferences和SharedPreferencesImpl,SharedPreferences中还有个Editor和EditorImpl，它们的作用是添加数据和修改数据。但是这里要注意，我们对Editor做操作，其实只是把数据保存在Editor的一个成员变量中，真正把数据更新到SharedPreferencesImpl并且写入文件是在Editor的commit或者apply方法被调用之后，下面我们去验证这个结论。
 
 ## 4.1 EditorImpl的实现
 
@@ -346,7 +335,7 @@ public final class EditorImpl implements Editor {
 
         public Editor putString(String key, @Nullable String value) {
             synchronized (mLock) {
-                //Editor的put操作，这是把数据添加到mModified这个成员变量中，并未写入文件
+
                 mModified.put(key, value);
                 return this;
             }
@@ -400,9 +389,11 @@ public final class EditorImpl implements Editor {
 
 ```
 
+从Editor的put操作来看，它是把数据添加到mModified这个成员变量中，并未写入文件。下面将解析 SharedPreferences中两个核心的方法commit和apply
+
 ## 4.2 commit和apply
 
-commit和apply是Editor中的方法，实现在EditorImpl中，那么他们两有什么区别，又是怎么实现的呢？首先，他们两最大的区别是commit是一个同步方法，它有一个boolean类型的返回值，而apply是一个异步方法，没有返回值。简单理解就是，commit需要等待提交结果，而apply不需要。所以commit以牺牲一定的性能而换来准确性的提高。另外一点就是对于apply方法，我们不用担心Android组件的生命周期会对它造成的影响，底层的框架帮我们做了处理，至于怎么做的，笔者也没弄明白（关于这个结论，大家可以看apply方法的注释）。上面说了这么多的结论，下面我们看看实现，来验证一下我们的结论。
+commit和apply是Editor中的方法，实现在EditorImpl中，那么他们两有什么区别，又是怎么实现的呢？首先，他们两最大的区别是commit是一个同步方法，它有一个boolean类型的返回值，而apply是一个异步方法，没有返回值。简单理解就是，commit需要等待提交结果，而apply不需要。所以commit以牺牲一定的性能而换来准确性的提高。另外一点就是对于apply方法，我们不用担心Android组件的生命周期会对它造成的影响，底层的框架帮我们做了处理，对，这句话是在apply的注释里说的，让我们不用担心，但是真的是这样的吗？[见4.2.6]分解，一个巨大的坑。上面说了这么多的结论，下面我们看看实现，来验证一下我们的结论。
 
 #### 4.2.1 commit
 
@@ -420,7 +411,7 @@ public boolean commit() {
            SharedPreferencesImpl.this.enqueueDiskWrite(
                mcr, null /* sync write on this thread okay */);
            try {
-
+              //等待写入操作的完成
                mcr.writtenToDiskLatch.await();
            } catch (InterruptedException e) {
                return false;
@@ -438,6 +429,16 @@ public boolean commit() {
 
 
 ```
+在commit方法中有个注意的地方　mcr.writtenToDiskLatch.await()，如果是在主线程中调用commit方法，这个操作是不需要的，但是如果同时在多个线程中多次调用commit方法，就必须有mcr.writtenToDiskLatch.await()操作了，因为写入操作可能会被放到别的子线程中被执行.
+然后就是notifyListeners()方法，当我们写入的数据发生变化后给我们的回调，这个回调我们可以通过下面的代码拿到。
+
+```
+sp.registerOnSharedPreferenceChangeListener { sharedPreferences, key -> }
+
+```
+是不是很惊喜。
+
+
 
 #### 4.2.2 apply
 
@@ -471,6 +472,8 @@ public void apply() {
                   }
               };
 
+        　// 执行文件写入操作，传入的 postWriteRunnable 参数不为 null，所以在                 
+          // enqueueDiskWrite 方法中会开启子线程异步将数据写入文件
           SharedPreferencesImpl.this.enqueueDiskWrite(mcr, postWriteRunnable);
 
           // Okay to notify the listeners before it's hit disk
@@ -522,7 +525,7 @@ private MemoryCommitResult commitToMemory() {
                        }
                        mClear = false;
                    }
-
+                    //mModified 保存的写记录同步到内存中的 mMap 中
                    for (Map.Entry<String, Object> e : mModified.entrySet()) {
                        String k = e.getKey();
                        Object v = e.getValue();
@@ -550,6 +553,7 @@ private MemoryCommitResult commitToMemory() {
                        }
                    }
 
+                 // 将 mModified 同步到 mMap 之后，清空 mModified
                    mModified.clear();
 
                    if (changesMade) {
@@ -564,8 +568,11 @@ private MemoryCommitResult commitToMemory() {
        }
 
 ```
+通过上面的注释和代码，每次有写操作的时候，都会同步mMap,这种我们就不需要每次在读取的时候重新load文件了，但是这个结论在多进程中不适用。commitToMemory先用到了SharedPreferencesImpl的锁，判断mDiskWritesInFlight大于0时，就拷贝一份mMap，把它存到MemoryCommitResult类的成员mapToWriteToDisk中，然后再把mDiskWritesInFlight加1。在把mapToWriteDisk写入到文件后，mDiskWritesInFlight会减1，所以mDiskWritesInFlight大于0说明之前已经有调用过commitToMemory了，并且还没有把map写入到文件，这样前后两次要准备写入磁盘的mapToWriteToDisk是两个不同的内存对象，后一次调用commitToMemory时，再更新mMap中的值时不会影响前一次的mapToWriteToDisk的写入文件
 
-#### enqueueDiskWrite
+
+
+#### 4.2.4 enqueueDiskWrite
 
 
 ```
@@ -573,13 +580,16 @@ private void enqueueDiskWrite(final MemoryCommitResult mcr,
                                  final Runnable postWriteRunnable) {
        final boolean isFromSyncCommit = (postWriteRunnable == null);
 
+       // 创建Runnable，负责将数据接入文件
        final Runnable writeToDiskRunnable = new Runnable() {
                public void run() {
                    synchronized (mWritingToDiskLock) {
-                      //将
+                      //写入文件操作[见4.2.5]
                        writeToFile(mcr, isFromSyncCommit);
                    }
                    synchronized (mLock) {
+
+                     // 写入文件后将mDiskWritesInFlight值减一
                        mDiskWritesInFlight--;
                    }
                    if (postWriteRunnable != null) {
@@ -596,12 +606,268 @@ private void enqueueDiskWrite(final MemoryCommitResult mcr,
                wasEmpty = mDiskWritesInFlight == 1;
            }
            if (wasEmpty) {
+
+             // 当只有一个 commit 请求未处理，那么无需开启线程进行处理，直接在本线程执行 //writeToDiskRunnable 即可
                writeToDiskRunnable.run();
                return;
            }
        }
-
+       //单线程执行写入操作
        QueuedWork.queue(writeToDiskRunnable, !isFromSyncCommit);
    }
 
 ```
+从这里我们可以得出commit操作，如果同时只有一次操作的时候，只会在当前线程中执行，但是如果并发commit时，剩余的writeToDiskRunnable则会被放在单独的线程中执行，而第一次commit所在的线程则进入阻塞状态。它需要等后面的commit都成功后才能算真正的成功，而返回的状态也是最后一次commit的状态。
+
+
+
+#### 4.2.5 writeToFile
+
+终于，迎来了最后真正的写操作
+
+```
+// Note: must hold mWritingToDiskLock
+   private void writeToFile(MemoryCommitResult mcr, boolean isFromSyncCommit) {
+       long startTime = 0;
+       long existsTime = 0;
+       long backupExistsTime = 0;
+       long outputStreamCreateTime = 0;
+       long writeTime = 0;
+       long fsyncTime = 0;
+       long setPermTime = 0;
+       long fstatTime = 0;
+       long deleteTime = 0;
+
+       if (DEBUG) {
+           startTime = System.currentTimeMillis();
+       }
+
+       boolean fileExists = mFile.exists();
+
+       if (DEBUG) {
+           existsTime = System.currentTimeMillis();
+
+           // Might not be set, hence init them to a default value
+           backupExistsTime = existsTime;
+       }
+
+       // Rename the current file so it may be used as a backup during the next read
+       if (fileExists) {
+           boolean needsWrite = false;
+
+           // Only need to write if the disk state is older than this commit
+           if (mDiskStateGeneration < mcr.memoryStateGeneration) {
+               if (isFromSyncCommit) {
+                   needsWrite = true;
+               } else {
+                   synchronized (mLock) {
+                       // No need to persist intermediate states. Just wait for the latest state to
+                       // be persisted.
+                       if (mCurrentMemoryStateGeneration == mcr.memoryStateGeneration) {
+                           needsWrite = true;
+                       }
+                   }
+               }
+           }
+
+           if (!needsWrite) {
+               mcr.setDiskWriteResult(false, true);
+               return;
+           }
+
+           boolean backupFileExists = mBackupFile.exists();
+
+           if (DEBUG) {
+               backupExistsTime = System.currentTimeMillis();
+           }
+
+           if (!backupFileExists) {
+               if (!mFile.renameTo(mBackupFile)) {
+                   Log.e(TAG, "Couldn't rename file " + mFile
+                         + " to backup file " + mBackupFile);
+                   mcr.setDiskWriteResult(false, false);
+                   return;
+               }
+           } else {
+               mFile.delete();
+           }
+       }
+
+       // Attempt to write the file, delete the backup and return true as atomically as
+       // possible.  If any exception occurs, delete the new file; next time we will restore
+       // from the backup.
+       try {
+           FileOutputStream str = createFileOutputStream(mFile);
+
+           if (DEBUG) {
+               outputStreamCreateTime = System.currentTimeMillis();
+           }
+
+           if (str == null) {
+               mcr.setDiskWriteResult(false, false);
+               return;
+           }
+           XmlUtils.writeMapXml(mcr.mapToWriteToDisk, str);
+
+           writeTime = System.currentTimeMillis();
+
+           FileUtils.sync(str);
+
+           fsyncTime = System.currentTimeMillis();
+
+           str.close();
+           ContextImpl.setFilePermissionsFromMode(mFile.getPath(), mMode, 0);
+
+           if (DEBUG) {
+               setPermTime = System.currentTimeMillis();
+           }
+
+           try {
+               final StructStat stat = Os.stat(mFile.getPath());
+               synchronized (mLock) {
+                   mStatTimestamp = stat.st_mtime;
+                   mStatSize = stat.st_size;
+               }
+           } catch (ErrnoException e) {
+               // Do nothing
+           }
+
+           if (DEBUG) {
+               fstatTime = System.currentTimeMillis();
+           }
+
+           // Writing was successful, delete the backup file if there is one.
+           mBackupFile.delete();
+
+           if (DEBUG) {
+               deleteTime = System.currentTimeMillis();
+           }
+
+           mDiskStateGeneration = mcr.memoryStateGeneration;
+
+           mcr.setDiskWriteResult(true, true);
+
+           if (DEBUG) {
+               Log.d(TAG, "write: " + (existsTime - startTime) + "/"
+                       + (backupExistsTime - startTime) + "/"
+                       + (outputStreamCreateTime - startTime) + "/"
+                       + (writeTime - startTime) + "/"
+                       + (fsyncTime - startTime) + "/"
+                       + (setPermTime - startTime) + "/"
+                       + (fstatTime - startTime) + "/"
+                       + (deleteTime - startTime));
+           }
+
+           long fsyncDuration = fsyncTime - writeTime;
+           mSyncTimes.add(Long.valueOf(fsyncDuration).intValue());
+           mNumSync++;
+
+           if (DEBUG || mNumSync % 1024 == 0 || fsyncDuration > MAX_FSYNC_DURATION_MILLIS) {
+               mSyncTimes.log(TAG, "Time required to fsync " + mFile + ": ");
+           }
+
+           return;
+       } catch (XmlPullParserException e) {
+           Log.w(TAG, "writeToFile: Got exception:", e);
+       } catch (IOException e) {
+           Log.w(TAG, "writeToFile: Got exception:", e);
+       }
+
+       // Clean up an unsuccessfully written file
+       if (mFile.exists()) {
+           if (!mFile.delete()) {
+               Log.e(TAG, "Couldn't clean up partially-written file " + mFile);
+           }
+       }
+       mcr.setDiskWriteResult(false, false);
+   }
+
+```
+#### 4.2.6 apply引起的anr
+
+还记得在介绍apply时，我们了解到apply是异步的，不会阻塞我们的主线程，官方的注释页说过android组件的生命周期不会对aplly的异步写入造成影响，告诉我们不用担心，但它却会有一定的几率引起anr,比如有一种情况，当我们的Activity执行onPause()的时候，
+
+```
+/**
+   * Trigger queued work to be processed immediately. The queued work is processed on a separate
+   * thread asynchronous. While doing that run and process all finishers on this thread. The
+   * finishers can be implemented in a way to check weather the queued work is finished.
+   *
+   * Is called from the Activity base class's onPause(), after BroadcastReceiver's onReceive,
+   * after Service command handling, etc. (so async work is never lost)
+   */
+  public static void waitToFinish() {
+      long startTime = System.currentTimeMillis();
+      boolean hadMessages = false;
+
+      Handler handler = getHandler();
+
+      synchronized (sLock) {
+          if (handler.hasMessages(QueuedWorkHandler.MSG_RUN)) {
+              // Delayed work will be processed at processPendingWork() below
+              handler.removeMessages(QueuedWorkHandler.MSG_RUN);
+
+              if (DEBUG) {
+                  hadMessages = true;
+                  Log.d(LOG_TAG, "waiting");
+              }
+          }
+
+          // We should not delay any work as this might delay the finishers
+          sCanDelay = false;
+      }
+
+      StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskWrites();
+      try {
+          processPendingWork();
+      } finally {
+          StrictMode.setThreadPolicy(oldPolicy);
+      }
+
+      try {
+          while (true) {
+              Runnable finisher;
+
+              synchronized (sLock) {
+                  finisher = sFinishers.poll();
+              }
+
+              if (finisher == null) {
+                  break;
+              }
+
+              finisher.run();
+          }
+      } finally {
+          sCanDelay = true;
+      }
+
+      synchronized (sLock) {
+          long waitTime = System.currentTimeMillis() - startTime;
+
+          if (waitTime > 0 || hadMessages) {
+              mWaitTimes.add(Long.valueOf(waitTime).intValue());
+              mNumWaits++;
+
+              if (DEBUG || mNumWaits % 1024 == 0 || waitTime > MAX_WAIT_TIME_MILLIS) {
+                  mWaitTimes.log(LOG_TAG, "waited: ");
+              }
+          }
+      }
+  }
+
+
+```
+
+
+
+# 总结
+
+
+# 参考文献
+
+- [SharedPreference的读写原理分析](https://blog.csdn.net/yueqian_scut/article/details/51477760)
+
+- [一眼看穿 SharedPreferences](https://mp.weixin.qq.com/s?__biz=Mzg5NjAzMjI0NQ==&mid=2247483824&idx=2&sn=72394553884d9d8e5560827844f1c690&chksm=c0060d2af771843c545c182d0bd0d0fa81a8ff376c062bb3f851325f904606301ce164602d93&mpshare=1&scene=1&srcid=0112eAzgdwYIPDzeECLHlio6&key=d1dd5c9a0a50c21a8507dbe6b90e9de2a89469b9fcd128ba4cfe412441ae8d96e67716c6d09a4a4ad00e8e39dc0554d1f157fd4f4097dffdee8e9f87745ce8202f13628b3ffa0d8c35a3cba7faae82ee&ascene=1&uin=MjQ5MDc1NzIzNg%3D%3D&devicetype=Windows+7&version=62060739&lang=zh_CN&pass_ticket=4JbX2ifmV0NW9DMLlRiASBNbvz%2BRLdiJVJu61suZm60%2FZ2OtpX1JT2DDnIPgHEl%2B)
+
+- [彻底搞懂 SharedPreferences](https://juejin.im/entry/597446ed6fb9a06bac5bc630)
