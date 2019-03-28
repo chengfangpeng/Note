@@ -8,6 +8,7 @@ SharedPreferences（简称SP）是Android轻量级的键值对存储方式。对
 2. 全量写入
 3. 加载缓慢
 4. 卡顿，apply异步落盘导致的anr
+
 带着这些结论我们一步步的从代码中找出它的依据，当然了，本文的内容不止如此，还包裹整个SharedPreferences的运行机理等，当然这一切都是我个人的理解，中间不免有错误的地方，也欢迎大家指证。
 
 
@@ -18,6 +19,7 @@ SharedPreferences的创建可以有多种方式：
 ## 2.1 ContextWrapper中获取
 
 ```
+# ContextWrapper.java
 public SharedPreferences getSharedPreferences(String name, int mode) {
        return mBase.getSharedPreferences(name, mode);
    }
@@ -30,6 +32,8 @@ public SharedPreferences getSharedPreferences(String name, int mode) {
 ## 2.2 PreferenceManager中获取
 
 ```
+# PreferenceManager.java
+
 public static SharedPreferences getDefaultSharedPreferences(Context context) {
       return context.getSharedPreferences(getDefaultSharedPreferencesName(context),
               getDefaultSharedPreferencesMode());
@@ -45,6 +49,9 @@ public static SharedPreferences getDefaultSharedPreferences(Context context) {
 #### 2.3.1 getSharedPreferences(String name, int mode)
 
 ```
+
+# ContextImpl.java
+
 public SharedPreferences getSharedPreferences(String name, int mode) {
        // At least one application in the world actually passes in a null
        // name.  This happened to work because when we generated the file name
@@ -78,6 +85,8 @@ public SharedPreferences getSharedPreferences(String name, int mode) {
 #### 2.3.2 getSharedPreferencesPath(name)
 
 ```
+
+# ContextImpl.java
 @Override
    public File getSharedPreferencesPath(String name) {
        return makeFilename(getPreferencesDir(), name + ".xml");
@@ -98,6 +107,8 @@ public SharedPreferences getSharedPreferences(String name, int mode) {
 #### 2.3.3 getSharedPreferences(file, mode)
 
 ```
+
+# ContextImpl.java
 @Override
    public SharedPreferences getSharedPreferences(File file, int mode) {
       //[见2.3.4]
@@ -138,9 +149,12 @@ public SharedPreferences getSharedPreferences(String name, int mode) {
 
 ```
 
+上面的代码有个MODE_MULTI_PROCESS模式，也就是我们如果要在多进程时使用SharedPreferences时需要指定这个mode，但是这种方式google是不推荐使用的，因为在线上大概有万分之一的概率造成 SharedPreferences的数据全部丢失，因为它没有使用任何进程锁的操作，这时重新加载可一次文件,具体见startReloadIfChangedUnexpectedly方法。
+
 #### 2.3.4 checkMode(mode)
 
 ```
+# ContextImpl.java
 private void checkMode(int mode) {
        if (getApplicationInfo().targetSdkVersion >= Build.VERSION_CODES.N) {
            if ((mode & MODE_WORLD_READABLE) != 0) {
@@ -154,11 +168,12 @@ private void checkMode(int mode) {
 
 ```
 
-在Android24之后的版本 SharedPreferences的mode不能再使用MODE_WORLD_READABLE和MODE_WORLD_WRITEABLE。另外MODE_MULTI_PROCESS这个mode也是google不推荐使用的，因为在线上大概有万分之一的概率造成 SharedPreferences的数据全部丢失，这块的逻辑我们一会再讲。
+在Android24之后的版本 SharedPreferences的mode不能再使用MODE_WORLD_READABLE和MODE_WORLD_WRITEABLE。
 
 #### 2.3.5 getSharedPreferencesCacheLocked()
 
 ```
+# ContextImpl.java
 private ArrayMap<File, SharedPreferencesImpl> getSharedPreferencesCacheLocked() {
         if (sSharedPrefsCache == null) {
             sSharedPrefsCache = new ArrayMap<>();
@@ -183,6 +198,7 @@ private ArrayMap<File, SharedPreferencesImpl> getSharedPreferencesCacheLocked() 
 SharedPreferencesImpl来完成的。
 
 ```
+# SharedPreferencesImpl.java
 SharedPreferencesImpl(File file, int mode) {
         mFile = file;
         mBackupFile = makeBackupFile(file);
@@ -196,6 +212,53 @@ SharedPreferencesImpl(File file, int mode) {
 ```
 
 #### 2.3.7
+
+当设置MODE_MULTI_PROCESS模式, 则每次getSharedPreferences过程, 会检查SP文件上次修改时间和文件大小, 一旦所有修改则会重新加载文件.
+
+```
+
+＃　SharedPreferencesImpl.java
+
+void startReloadIfChangedUnexpectedly() {
+       synchronized (mLock) {
+           // TODO: wait for any pending writes to disk?
+           if (!hasFileChangedUnexpectedly()) {
+               return;
+           }
+           startLoadFromDisk();
+       }
+   }
+
+
+   // Has the file changed out from under us?  i.e. writes that
+    // we didn't instigate.
+    private boolean hasFileChangedUnexpectedly() {
+        synchronized (mLock) {
+            if (mDiskWritesInFlight > 0) {
+                // If we know we caused it, it's not unexpected.
+                if (DEBUG) Log.d(TAG, "disk write in flight, not unexpected.");
+                return false;
+            }
+        }
+
+        final StructStat stat;
+        try {
+            /*
+             * Metadata operations don't usually count as a block guard
+             * violation, but we explicitly want this one.
+             */
+            BlockGuard.getThreadPolicy().onReadFromDisk();
+            stat = Os.stat(mFile.getPath());
+        } catch (ErrnoException e) {
+            return true;
+        }
+
+        synchronized (mLock) {
+            return mStatTimestamp != stat.st_mtime || mStatSize != stat.st_size;
+        }
+    }
+
+```
 
 
 #### 2.3.8 startLoadFromDisk()
@@ -301,7 +364,7 @@ private void awaitLoadedLocked() {
            // Raise an explicit StrictMode onReadFromDisk for this
            // thread, since the real read will be in a different
            // thread and otherwise ignored by StrictMode.
-           //关于[StrictMode](http://duanqz.github.io/2015-11-04-StrictMode-Analysis#23-strictmode-penalty),可以查看这篇文章
+           //[见参考文档]
            BlockGuard.getThreadPolicy().onReadFromDisk();
        }
        while (!mLoaded) {
@@ -319,11 +382,13 @@ private void awaitLoadedLocked() {
 
 # 4. SharedPreferences数据添加和修改
 
-如同SharedPreferences和SharedPreferencesImpl,SharedPreferences中还有个Editor和EditorImpl，它们的作用是添加数据和修改数据。但是这里要注意，我们对Editor做操作，其实只是把数据保存在Editor的一个成员变量中，真正把数据更新到SharedPreferencesImpl并且写入文件是在Editor的commit或者apply方法被调用之后，下面我们去验证这个结论。
+SharedPreferences中还有个Editor和EditorImpl，它们的作用是添加数据和修改数据。但是这里要注意，我们对Editor做操作，其实只是把数据保存在Editor的一个成员变量中，真正把数据更新到SharedPreferencesImpl并且写入文件是在Editor的commit或者apply方法被调用之后.
 
 ## 4.1 EditorImpl的实现
 
 ```
+＃　SharedPreferencesImpl.java
+
 public final class EditorImpl implements Editor {
         private final Object mLock = new Object();
 
@@ -389,16 +454,20 @@ public final class EditorImpl implements Editor {
 
 ```
 
-从Editor的put操作来看，它是把数据添加到mModified这个成员变量中，并未写入文件。下面将解析 SharedPreferences中两个核心的方法commit和apply
+从Editor的put操作来看，它是把数据添加到mModified这个成员变量中，并未写入文件。而写入的操作是在commit和apply中执行的，下面就解析 SharedPreferences中两个核心的方法commit和apply
 
 ## 4.2 commit和apply
 
-commit和apply是Editor中的方法，实现在EditorImpl中，那么他们两有什么区别，又是怎么实现的呢？首先，他们两最大的区别是commit是一个同步方法，它有一个boolean类型的返回值，而apply是一个异步方法，没有返回值。简单理解就是，commit需要等待提交结果，而apply不需要。所以commit以牺牲一定的性能而换来准确性的提高。另外一点就是对于apply方法，我们不用担心Android组件的生命周期会对它造成的影响，底层的框架帮我们做了处理，对，这句话是在apply的注释里说的，让我们不用担心，但是真的是这样的吗？[见4.2.6]分解，一个巨大的坑。上面说了这么多的结论，下面我们看看实现，来验证一下我们的结论。
+commit和apply是Editor中的方法，实现在EditorImpl中，那么他们两有什么区别，又是怎么实现的呢？首先，他们两最大的区别是commit是一个同步方法，它有一个boolean类型的返回值，而apply是一个异步方法，没有返回值。简单理解就是，commit需要等待提交结果，而apply不需要。所以commit以牺牲一定的性能而换来准确性的提高。另外一点就是对于apply方法，官方的注释告诉我们不用担心Android组件的生命周期会对它造成的影响，底层的框架帮我们做了处理，但是真的是这样的吗？[见4.2.6]分解。下面看具体的分析。
 
 #### 4.2.1 commit
 
 
+
 ```
+
+# SharedPreferencesImpl.java
+
 public boolean commit() {
            long startTime = 0;
 
@@ -429,21 +498,18 @@ public boolean commit() {
 
 
 ```
-在commit方法中有个注意的地方　mcr.writtenToDiskLatch.await()，如果是在主线程中调用commit方法，这个操作是不需要的，但是如果同时在多个线程中多次调用commit方法，就必须有mcr.writtenToDiskLatch.await()操作了，因为写入操作可能会被放到别的子线程中被执行.
-然后就是notifyListeners()方法，当我们写入的数据发生变化后给我们的回调，这个回调我们可以通过下面的代码拿到。
+在commit中首先调用commitToMemory将数据保存在内存中，然后会执行写入操作，并且让当前commit所在的线程处于阻塞状态。当写入完成后会通过onSharedPreferenceChanged提醒数据发生的变化。这个过程中有个注意的地方，　mcr.writtenToDiskLatch.await()，如果非并发调用commit方法，这个操作是不需要的，但是如果并发commit时，就必须有mcr.writtenToDiskLatch.await()操作了，因为写入操作可能会被放到别的子线程中执行.然后就是notifyListeners()方法，当我们写入的数据发生变化后给我们的回调，这个回调我们可以通过注册下面的代码拿到。
 
 ```
 sp.registerOnSharedPreferenceChangeListener { sharedPreferences, key -> }
 
 ```
-是不是很惊喜。
-
-
 
 #### 4.2.2 apply
 
 
 ```
+# SharedPreferencesImpl.java
 public void apply() {
           final long startTime = System.currentTimeMillis();
           //将数据保存在内存中[见4.2.3]
@@ -484,11 +550,15 @@ public void apply() {
       }
 
 ```
+apply方法的流程和commit其实是差不多，但是apply的写入操作会被放在一个单独的线程中执行，并且不会阻塞当前apply所在的线程。当时有中特殊的请求是会阻塞的，那就是在Activity的onStop方法被调用，并且apply的写入操作还未完成时，会阻塞主线程，更详情的分析[见4.2.6]
+
 
 #### 4.2.3 commitToMemory
 
 
 ```
+# SharedPreferencesImpl.java
+
 private MemoryCommitResult commitToMemory() {
            long memoryStateGeneration;
            List<String> keysModified = null;
@@ -568,7 +638,7 @@ private MemoryCommitResult commitToMemory() {
        }
 
 ```
-通过上面的注释和代码，每次有写操作的时候，都会同步mMap,这种我们就不需要每次在读取的时候重新load文件了，但是这个结论在多进程中不适用。commitToMemory先用到了SharedPreferencesImpl的锁，判断mDiskWritesInFlight大于0时，就拷贝一份mMap，把它存到MemoryCommitResult类的成员mapToWriteToDisk中，然后再把mDiskWritesInFlight加1。在把mapToWriteDisk写入到文件后，mDiskWritesInFlight会减1，所以mDiskWritesInFlight大于0说明之前已经有调用过commitToMemory了，并且还没有把map写入到文件，这样前后两次要准备写入磁盘的mapToWriteToDisk是两个不同的内存对象，后一次调用commitToMemory时，再更新mMap中的值时不会影响前一次的mapToWriteToDisk的写入文件
+通过上面的注释和代码，我们了解到每次有写操作的时候，都会同步mMap,这样我们就不需要每次在读取的时候重新load文件了，但是这个结论在多进程中不适用。另外需要关注的是mDiskWritesInFlight这个变量，当mDiskWritesInFlight大于0时，会拷贝一份mMap，把它存到MemoryCommitResult类的成员mapToWriteToDisk中，然后再把mDiskWritesInFlight加1。在把mapToWriteDisk写入到文件后，mDiskWritesInFlight会减1，所以mDiskWritesInFlight大于0说明之前已经有调用过commitToMemory了，并且还没有把map写入到文件，这样前后两次要准备写入文件的mapToWriteToDisk是两个不同的内存对象，后一次调用commitToMemory时，再更新mMap中的值时不会影响前一次的mapToWriteToDisk的写入文件
 
 
 
@@ -576,6 +646,8 @@ private MemoryCommitResult commitToMemory() {
 
 
 ```
+# SharedPreferencesImpl.java
+
 private void enqueueDiskWrite(final MemoryCommitResult mcr,
                                  final Runnable postWriteRunnable) {
        final boolean isFromSyncCommit = (postWriteRunnable == null);
@@ -617,15 +689,15 @@ private void enqueueDiskWrite(final MemoryCommitResult mcr,
    }
 
 ```
-从这里我们可以得出commit操作，如果同时只有一次操作的时候，只会在当前线程中执行，但是如果并发commit时，剩余的writeToDiskRunnable则会被放在单独的线程中执行，而第一次commit所在的线程则进入阻塞状态。它需要等后面的commit都成功后才能算真正的成功，而返回的状态也是最后一次commit的状态。
-
-
+从这里我们可以得出commit操作，如果只有一次操作的时候，只会在当前线程中执行，但是如果并发commit时，剩余的writeToDiskRunnable则会被放在单独的线程中执行，而第一次commit所在的线程则进入阻塞状态。它需要等后面的commit都成功后才能算真正的成功，而返回的状态也是最后一次commit的状态。
 
 #### 4.2.5 writeToFile
 
-终于，迎来了最后真正的写操作
+终于，迎来了最后真正的写操作，包括在写入成功的时候将容灾文件删除，或者在写入失败时将半成品文件删除等，最后将写结果保存在MemoryCommitResult中。
 
 ```
+# SharedPreferencesImpl.java
+
 // Note: must hold mWritingToDiskLock
    private void writeToFile(MemoryCommitResult mcr, boolean isFromSyncCommit) {
        long startTime = 0;
@@ -785,7 +857,28 @@ private void enqueueDiskWrite(final MemoryCommitResult mcr,
 ```
 #### 4.2.6 apply引起的anr
 
-还记得在介绍apply时，我们了解到apply是异步的，不会阻塞我们的主线程，官方的注释页说过android组件的生命周期不会对aplly的异步写入造成影响，告诉我们不用担心，但它却会有一定的几率引起anr,比如有一种情况，当我们的Activity执行onPause()的时候，
+还记得在介绍apply时，我们了解到apply是异步的，不会阻塞我们的主线程，官方的注释页说过android组件的生命周期不会对aplly的异步写入造成影响，告诉我们不用担心，但它却会有一定的几率引起anr,比如有一种情况，当我们的Activity执行onPause()的时候，也就是ActivityThread类执行handleStopActivity方法是，看看它干了啥
+它会执行  QueuedWork.waitToFinish()方法，而waitToFinish方法中有个while循环，如果我们还有没有完成的异步落盘操作时，它会调用到我们在apply方法中创建的awaitCommit，让我们主线程处于等待状态，直到所有的落盘操作完成，才会跳出循环，这也就是apply造成anr的元凶。
+
+
+```
+# ActivityThread.java
+
+@Override
+  public void handleStopActivity(IBinder token, boolean show, int configChanges,
+          PendingTransactionActions pendingActions, boolean finalStateRequest, String reason) {
+      //...省略
+
+      // Make sure any pending writes are now committed.
+      if (!r.isPreHoneycomb()) {
+          QueuedWork.waitToFinish();
+      }
+     //...省略
+  }
+
+```
+
+
 
 ```
 /**
@@ -797,33 +890,7 @@ private void enqueueDiskWrite(final MemoryCommitResult mcr,
    * after Service command handling, etc. (so async work is never lost)
    */
   public static void waitToFinish() {
-      long startTime = System.currentTimeMillis();
-      boolean hadMessages = false;
-
-      Handler handler = getHandler();
-
-      synchronized (sLock) {
-          if (handler.hasMessages(QueuedWorkHandler.MSG_RUN)) {
-              // Delayed work will be processed at processPendingWork() below
-              handler.removeMessages(QueuedWorkHandler.MSG_RUN);
-
-              if (DEBUG) {
-                  hadMessages = true;
-                  Log.d(LOG_TAG, "waiting");
-              }
-          }
-
-          // We should not delay any work as this might delay the finishers
-          sCanDelay = false;
-      }
-
-      StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskWrites();
-      try {
-          processPendingWork();
-      } finally {
-          StrictMode.setThreadPolicy(oldPolicy);
-      }
-
+      ...省略
       try {
           while (true) {
               Runnable finisher;
@@ -835,39 +902,35 @@ private void enqueueDiskWrite(final MemoryCommitResult mcr,
               if (finisher == null) {
                   break;
               }
-
+              [见4.2.2中的awaitCommit]  
               finisher.run();
           }
       } finally {
           sCanDelay = true;
       }
-
-      synchronized (sLock) {
-          long waitTime = System.currentTimeMillis() - startTime;
-
-          if (waitTime > 0 || hadMessages) {
-              mWaitTimes.add(Long.valueOf(waitTime).intValue());
-              mNumWaits++;
-
-              if (DEBUG || mNumWaits % 1024 == 0 || waitTime > MAX_WAIT_TIME_MILLIS) {
-                  mWaitTimes.log(LOG_TAG, "waited: ");
-              }
-          }
-      }
+      ...省略
   }
 
 
 ```
 
-
-
 # 总结
+
+SharedPreferences是一种轻量级的存储方式，使用方便，但是也有它适用的场景。要优雅滴使用sp，要注意以下几点：
+
+1. 不同的配置信息不要都放在一起，这样每次读写会越来越卡。
+2. 不要在同一个文件中频繁的读取key和value，因为同步锁的缘故，会造成卡顿
+3. 不要频繁的commit和apply，尽量批量修改一次提交，尤其是apply,会造成anr
+4. 不要在保存太大的数据
+5. 不要指望它在多进程中使用。
 
 
 # 参考文献
 
-- [SharedPreference的读写原理分析](https://blog.csdn.net/yueqian_scut/article/details/51477760)
+1. [SharedPreference的读写原理分析](https://blog.csdn.net/yueqian_scut/article/details/51477760)
 
-- [一眼看穿 SharedPreferences](https://mp.weixin.qq.com/s?__biz=Mzg5NjAzMjI0NQ==&mid=2247483824&idx=2&sn=72394553884d9d8e5560827844f1c690&chksm=c0060d2af771843c545c182d0bd0d0fa81a8ff376c062bb3f851325f904606301ce164602d93&mpshare=1&scene=1&srcid=0112eAzgdwYIPDzeECLHlio6&key=d1dd5c9a0a50c21a8507dbe6b90e9de2a89469b9fcd128ba4cfe412441ae8d96e67716c6d09a4a4ad00e8e39dc0554d1f157fd4f4097dffdee8e9f87745ce8202f13628b3ffa0d8c35a3cba7faae82ee&ascene=1&uin=MjQ5MDc1NzIzNg%3D%3D&devicetype=Windows+7&version=62060739&lang=zh_CN&pass_ticket=4JbX2ifmV0NW9DMLlRiASBNbvz%2BRLdiJVJu61suZm60%2FZ2OtpX1JT2DDnIPgHEl%2B)
+2. [一眼看穿 SharedPreferences](https://mp.weixin.qq.com/s?__biz=Mzg5NjAzMjI0NQ==&mid=2247483824&idx=2&sn=72394553884d9d8e5560827844f1c690&chksm=c0060d2af771843c545c182d0bd0d0fa81a8ff376c062bb3f851325f904606301ce164602d93&mpshare=1&scene=1&srcid=0112eAzgdwYIPDzeECLHlio6&key=d1dd5c9a0a50c21a8507dbe6b90e9de2a89469b9fcd128ba4cfe412441ae8d96e67716c6d09a4a4ad00e8e39dc0554d1f157fd4f4097dffdee8e9f87745ce8202f13628b3ffa0d8c35a3cba7faae82ee&ascene=1&uin=MjQ5MDc1NzIzNg%3D%3D&devicetype=Windows+7&version=62060739&lang=zh_CN&pass_ticket=4JbX2ifmV0NW9DMLlRiASBNbvz%2BRLdiJVJu61suZm60%2FZ2OtpX1JT2DDnIPgHEl%2B)
 
-- [彻底搞懂 SharedPreferences](https://juejin.im/entry/597446ed6fb9a06bac5bc630)
+3. [彻底搞懂 SharedPreferences](https://juejin.im/entry/597446ed6fb9a06bac5bc630)
+
+4. [StrictMode解析](http://duanqz.github.io/2015-11-04-StrictMode-Analysis#23-strictmode-penalty)
