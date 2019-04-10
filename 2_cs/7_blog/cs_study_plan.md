@@ -2,7 +2,7 @@
 
 ## Android源码解读计划
 
-- [SharedPreferences源码解读](https://github.com/chengfangpeng/Note/blob/master/2_cs/7_blog/SharePreferences%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86.md)
+- [SharedPreferences源码解读](https://github.com/chengfangpeng/Note/blob/master/2_cs/7_blog/SharePreferences%E6%BA%90%E7%A0%81%E8%A7%A3%E8%AF%BB.md)
 
 - [RecyclerView局部刷新和Diff算法](https://github.com/chengfangpeng/Note/blob/master/2_cs/7_blog/RecyclerView%E5%B1%80%E9%83%A8%E5%88%B7%E6%96%B0%E5%92%8CDiff%E7%AE%97%E6%B3%95.md)
 
