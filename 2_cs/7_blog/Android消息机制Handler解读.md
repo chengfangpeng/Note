@@ -63,7 +63,8 @@ private void handlerTest(){
 
 ## Looper
 
-通过上面的例子，我们在一个线程中创建handler的时候，首先得调用Looper.prepare()方法，看看这个方法中做了哪些的操作.
+通过上面的例子，我们在一个线程中创建handler的时候，首先得调用Looper.prepare()方法。
+
 
 ```
 //Looper.java
@@ -86,7 +87,7 @@ private void handlerTest(){
     }
 
 ```
-我们看到除了prepare()方法外，还有一个带参数的同名方法，这个参数判断我们是否可以主动退出loop()循环，等一会我们讲到
+除了prepare()方法外，还有一个带参数的同名方法，这个参数判断我们是否可以主动退出loop()循环，等一会我们讲到
 loop()方法的时候会对这个参数有更深的理解。然后prepare方法创建了Looper对象,然后将其实例保存在了sThreadLocal
 这个成员变量中。关于ThreadLocal的作用和原理请看下面的小节。
 
@@ -128,7 +129,7 @@ private Looper(boolean quitAllowed) {
            Message msg = queue.next(); // 可能会阻塞在这里
            if (msg == null) {
                // No message indicates that the message queue is quitting.
-               //如果没有message说明消息队列正在推出
+               //如果没有message说明消息队列正在退出
                return;
            }
 
@@ -370,8 +371,7 @@ Message next() {
 #### enqueueMessage
 
 enqueueMessage方法的作用是往消息队列中添加消息，这里我们发现MessageQueue的队列是用链表实现的，
-另外在插入的时候会以时间去排序，而这个时间是当然插入的时间，但是，如果插入的消息是
-延时消息，还需要将这个时间也加上。下面我们看看具体的代码实现。
+另外在插入的时候会以消息执行的时间进行排序。下面我们看看具体的代码实现。
 
 ```
 //MessageQueue.java
@@ -433,7 +433,7 @@ boolean enqueueMessage(Message msg, long when) {
 
 
 ```
-对于延时的消息,MessageQueue会遍历整个链表，知道找到合适的插入的位置。
+对于延时的消息,MessageQueue会遍历整个链表，直到找到合适的插入的位置。
 
 
 
@@ -445,7 +445,7 @@ Message顾名思义是handler消息机制中的那个消息，handler发送和�
 
 当我们平时需要Message实例时，可以直接的new Message(),也可以调用Message的obtain()方法，但是更推荐
 使用后者，因为Message中有个Message的缓存池，这个缓存池的大小时50，从MAX_POOL_SIZE这个常量值可以得到，
-所以obtain()方法先会从sPool的链表中获取Message实例，如果没有的化才会
+所以obtain()方法先会从sPool的链表中获取Message实例，如果没有的话才会
 new Message()
 
 ```
@@ -453,6 +453,7 @@ new Message()
 public static Message obtain() {
         synchronized (sPoolSync) {
             if (sPool != null) {
+              //message pool也是用链表实现的
                 Message m = sPool;
                 sPool = m.next;
                 m.next = null;
@@ -494,8 +495,6 @@ public static Message obtain() {
 
     /**
      * 该方法可能回收还在使用的Message
-     * Recycles a Message that may be in-use.
-     * Used internally by the MessageQueue and Looper when disposing of queued Messages.
      */
     void recycleUnchecked() {
         // Mark the message as in use while it remains in the recycled object pool.
@@ -526,3 +525,99 @@ public static Message obtain() {
 
 
 ## Handler
+
+Handler在整个handler消息机制中的作用是，Message的发送和处理。
+
+
+#### Handler构造方法
+
+```
+
+public Handler(Callback callback, boolean async) {
+
+      //是否检测内存泄漏的风险
+      if (FIND_POTENTIAL_LEAKS) {
+          final Class<? extends Handler> klass = getClass();
+          if ((klass.isAnonymousClass() || klass.isMemberClass() || klass.isLocalClass()) &&
+                  (klass.getModifiers() & Modifier.STATIC) == 0) {
+              Log.w(TAG, "The following Handler class should be static or leaks might occur: " +
+                  klass.getCanonicalName());
+          }
+      }
+
+      mLooper = Looper.myLooper();//从当前的线程中获取Looper, todo
+      if (mLooper == null) {//在线程中创建handle时，需要先调用Looper.prepare()
+          throw new RuntimeException(
+              "Can't create handler inside thread that has not called Looper.prepare()");
+      }
+      mQueue = mLooper.mQueue; //Looper中创建的消息队列
+      mCallback = callback;//处理message的回调
+      mAsynchronous = async;
+  }
+
+
+```
+
+
+#### 发送Message
+
+上面说了Handler中处理发送消息和分发消息的任务，下面看看它的具体实现。
+
+```
+public boolean sendMessageAtTime(Message msg, long uptimeMillis) {
+    MessageQueue queue = mQueue;
+    if (queue == null) {
+        RuntimeException e = new RuntimeException(
+                this + " sendMessageAtTime() called with no mQueue");
+        Log.w("Looper", e.getMessage(), e);
+        return false;
+    }
+    return enqueueMessage(queue, msg, uptimeMillis);
+}
+
+
+```
+
+
+
+```
+
+private boolean enqueueMessage(MessageQueue queue, Message msg, long uptimeMillis) {
+       msg.target = this;
+       if (mAsynchronous) {
+           msg.setAsynchronous(true);
+       }
+       return queue.enqueueMessage(msg, uptimeMillis);
+   }
+
+```
+
+发送消息其实最终就是将Message根据Message的执行时间插入到MessageQueue中，具体可以看[todo]中的逻辑
+
+
+
+#### 分发消息
+
+Looper在调用loop()方法的时候，当遇到符合条件的Message，就会调用Handler的dispatchMessage方法，
+用来分发Message，这用我们我们就可以在Handler中处理Message了。
+
+
+```
+
+/**
+   * Handle system messages here.
+   */
+  public void dispatchMessage(Message msg) {
+      if (msg.callback != null) {
+          handleCallback(msg);
+      } else {
+          if (mCallback != null) {
+              if (mCallback.handleMessage(msg)) {
+                  return;
+              }
+          }
+          handleMessage(msg);
+      }
+  }
+
+```
