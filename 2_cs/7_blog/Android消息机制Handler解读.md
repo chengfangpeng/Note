@@ -12,6 +12,7 @@
 消息机制在Android的事件传递等方面有着广泛的使用，如果不理解Handler消息机制，就很难对Android的整个运行流程有个清晰的
 认识,下面先看个图，这个就是整个handler消息机制最核心原理。
 
+
 ![handler消息机制](assets/handler_msg_ mechanism.png)
 
 
