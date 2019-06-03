@@ -13,7 +13,7 @@
 认识,下面先看个图，这个就是整个handler消息机制最核心原理。
 
 
-![handler消息机制](assets/handler_msg_ mechanism.png)
+ ![handler消息机制](assets/handler_msg_ mechanism.png)
 
 
 
