@@ -11,7 +11,7 @@
 一个进程中。另外，我们所说的Handler消息机制是由Looper、MessageQueue、Message、Handler等类共同组成的。Handler
 消息机制在Android的事件传递等方面有着广泛的使用，如果不理解Handler消息机制，就很难对Android的整个运行流程有个清晰的认识.
 
-![如图](assets/handler_msg_ mechanism.png)
+![如图](assets/handler_1.png)
 
 上图这个就是整个handler消息机制最核心原理。
 
