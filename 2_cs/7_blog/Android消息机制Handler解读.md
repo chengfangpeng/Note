@@ -9,11 +9,14 @@
 ## 概述
 我们平时使用Handler一般是在工作线程中更新UI线程时使用，说白了它是一种线程间的消息传递机制，当然了它是限制在同
 一个进程中。另外，我们所说的Handler消息机制是由Looper、MessageQueue、Message、Handler等类共同组成的。Handler
-消息机制在Android的事件传递等方面有着广泛的使用，如果不理解Handler消息机制，就很难对Android的整个运行流程有个清晰的
-认识,下面先看个图，这个就是整个handler消息机制最核心原理。
+消息机制在Android的事件传递等方面有着广泛的使用，如果不理解Handler消息机制，就很难对Android的整个运行流程有个清晰的认识.
+
+![如图](assets/handler_msg_ mechanism.png)
+
+上图这个就是整个handler消息机制最核心原理。
 
 
- ![如图](assets/handler_msg_ mechanism.png)
+ 
 
 
 
