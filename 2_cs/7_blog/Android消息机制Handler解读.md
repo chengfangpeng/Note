@@ -7,33 +7,36 @@
 
 
 ## 概述
-我们平时使用Handler一般是在工作线程中更新UI线程时使用，说白了它是一种线程间的消息传递机制，当然了它是限制在同
-一个进程中。另外，我们所说的Handler消息机制是由Looper、MessageQueue、Message、Handler等类共同组成的。Handler
-消息机制在Android的事件传递等方面有着广泛的使用，如果不理解Handler消息机制，就很难对Android的整个运行流程有个清晰的认识.
+
+在Android系统中使用了很多种通信的方式，比如进程间通信使用的Socket,Binder机制等，但是在相同进程不同线程之间通信再使用这些方式就显得杀鸡用牛了，于是Android使用了一种新的Handler消息机制，有了它我们可以很方便的进行不同线程之间的通信，当然了Handler消息机制也只能限定在同一个进程中。但是，Android系统中关于Handler消息机制的使用却不限于此，比如:android的四大组件，事件机制等都和Handler消息机制密切相关。我们所说的Handler消息机制是由Looper、MessageQueue、Message、Handler等类共同组成的，接下来我们就通过源码研究一下handler消息机制的原理。话不多说，先上张图，下图虽然简单，但是它体现了个handler消息机制最核心的运行流程，在下面枯燥而乏味的源码解读中，大家可以结合这张图去看，思路可能会更清晰些。
+
+
 
 ![如图](assets/handler_1.png)
-
-上图这个就是整个handler消息机制最核心原理。
-
-
 
 
 
 
 
 ## handler实例
-下面先看一个handler的简单实用，通过这个这个例子，我们一步一步去探究handler机制的整个运行的流程。
 
-···
+下面先看一个我们平时使用handler的例子，通过这个这个例子，我们一步一步去探究handler机制的整个运行的流程。这个例子就是怎么在一个线程中创建handler,可以简单概括为下面的步骤:
 
+1. 调用Looper.prepare()方法
+2. 创建handler对象
+3. 调用Looper.loop()方法
+4. 调用Looper的quit方法结束loop
+
+
+```
 private void handlerTest(){
 
-       final LooperThread looperThread = new LooperThread("xray");
-       looperThread.start();
+       mLooperThread = new LooperThread("xray");
+       mLooperThread.start();
        findViewById(R.id.btn_send_msg).setOnClickListener(new View.OnClickListener() {
            @Override
            public void onClick(View v) {
-               looperThread.mHandler.sendEmptyMessage(10);
+               mLooperThread.mHandler.sendEmptyMessage(10);
            }
        });
 
@@ -65,8 +68,17 @@ private void handlerTest(){
        }
    }
 
+   @Override
+   protected void onDestroy() {
 
-···
+       if(mLooperThread != null){
+           mLooperThread.mHandler.getLooper().quit();
+       }
+       super.onDestroy();
+   }
+
+
+```
 
 
 
@@ -96,11 +108,10 @@ private void handlerTest(){
     }
 
 ```
-除了prepare()方法外，还有一个带参数的同名方法，这个参数判断我们是否可以主动退出loop()循环，等一会我们讲到
-loop()方法的时候会对这个参数有更深的理解。然后prepare方法创建了Looper对象,然后将其实例保存在了sThreadLocal
-这个成员变量中。关于ThreadLocal的作用和原理请看下面的小节。
+除了prepare()方法，还有一个同名的带参数的方法，这个参数判断我们是否可以主动退出loop()循环，等一会我们讲到
+loop()方法的时候会对这个参数有更深的理解。然后prepare方法创建了Looper对象,并将其实例保存在了sThreadLocal这个成员变量中。关于ThreadLocal我会单独写篇文章介绍，这里只要知道ThreadLocal会保存当前线程中的值，并且多个线程之间不会互相干扰。
 
-下面看看Looper的构造方法中做什么。
+Looper的构造方法：
 
 ```
 private Looper(boolean quitAllowed) {
@@ -109,10 +120,13 @@ private Looper(boolean quitAllowed) {
     }
 
 ```
-我们发现在Looper的构造方法中，创建了MessageQueue,俗称消息队列，这个是handler消息机制的另外一个主人公。我们稍后会着重的对它
-进行介绍。
+我们发现在Looper的构造方法中，创建了MessageQueue对象,俗称消息队列，这个是handler消息机制的另外一个主人公。我们稍后会着重对它进行介绍。总结一下Looper.prepare()所做的工作:
 
-现在我们回到上面的例子，我们先不管Handler的创建,看Looper.loop()方法.
+1. 创建Looper对象，并将其保存在ThreadLocal中
+2. 在Looper中创建了MessageQueue对象
+
+现在我们回到上面的例子，先不管Handler的创建,看Looper.loop()方法.
+
 
 ```
 
@@ -195,8 +209,17 @@ private Looper(boolean quitAllowed) {
    }
 
 ```
+代码比较长，重要的地方我做了注释，这个方法被调用后Looper就启动了，概括一下该方法做的主要工作：
+
+1. 有个for循环，在循环中不断的从消息队列中获取消息，获取方法可能会被阻塞。
+2. 将获取到的Message分发出去， msg.target.dispatchMessage(msg)，这个handler大多数情况就是Handler.
+3. 将Message进行回收，以便可以复用，下文会详细介绍。
+
+
 
 #### mylooper()
+
+从ThreadLocal中获取当前线程的Looper对象
 
 ```
 /**
@@ -210,6 +233,8 @@ private Looper(boolean quitAllowed) {
 ```
 
 #### quit()和quitSafely()
+
+退出loop调用的方法，其实他真正的实现在MessageQueue中。
 
 ```
 /**
@@ -250,10 +275,10 @@ private Looper(boolean quitAllowed) {
 
 ```
 
-这个两个方法调用的都是MessageQueue中的方法，具体见todo
-
 
 ## MessageQueue
+
+在上面讲Handler的时候，我们多次提到了MessageQueue，下面就介绍一下MessageQueue的原理。
 
 
 #### next()
@@ -376,11 +401,13 @@ Message next() {
 
 
 ```
+通过上面的代码，我们知道MessageQueue中维护了一个链表，在从队列中获取消息时，是根据消息的真正执行时间来取出的，如果这段时间空闲，会回调IdleHandler,如果我们设置了它，如果当前的Message的执行时间没到，又没有IdleHandler需要处理，那么程序就会阻塞在这里。看到这里如果大家够细心的话，一定能推测出MessageQueue中的Message一定是按时间排好序的，否则Message的分发顺序就会有问题，排序的逻辑就在enqueueMessage方法中。
+
 
 #### enqueueMessage
 
-enqueueMessage方法的作用是往消息队列中添加消息，这里我们发现MessageQueue的队列是用链表实现的，
-另外在插入的时候会以消息执行的时间进行排序。下面我们看看具体的代码实现。
+enqueueMessage方法的作用是往消息队列中添加消息，并且在插入的时候会以消息执行的时间进行排序。下面我们看看具体的代码实现，其实还是对链表的操作。
+
 
 ```
 //MessageQueue.java
@@ -442,20 +469,19 @@ boolean enqueueMessage(Message msg, long when) {
 
 
 ```
-对于延时的消息,MessageQueue会遍历整个链表，直到找到合适的插入的位置。
 
+总结一下这段代码，在往链表中插入消息时，会先对Message执行的时间进行对比，对于延时的消息,MessageQueue会遍历整个链表，直到找到合适的插入的位置。
 
 
 ## Message
 
-Message顾名思义是handler消息机制中的那个消息，handler发送和处理的实体就是这个Message.
+Message顾名思义是handler消息机制中的那个消息，Handler发送和处理的实体就是这个它.
 
 #### obtain()
 
-当我们平时需要Message实例时，可以直接的new Message(),也可以调用Message的obtain()方法，但是更推荐
-使用后者，因为Message中有个Message的缓存池，这个缓存池的大小时50，从MAX_POOL_SIZE这个常量值可以得到，
-所以obtain()方法先会从sPool的链表中获取Message实例，如果没有的话才会
-new Message()
+当我们平时需要Message实例时，可以直接new Message(),也可以调用Message.obtain()方法，但是更推荐
+使用后者，因为Message中有个Message的缓存池，这个缓存池的大小是50（从MAX_POOL_SIZE这个常量值可以得到），
+而obtain()方法会先从缓存池中获取，这个缓存池也是用链表实现的。如果obtain()获取不到Message实例，才会重新new
 
 ```
 
