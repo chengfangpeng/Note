@@ -506,7 +506,7 @@ public static Message obtain() {
 #### recycle()和recycleUnchecked()
 
 这两个方法的作用是将使用完的Message对象进行回收，重新放入都Message缓存池中，以便下次使用，其实代码很简单，
-主要还是对链表的操作，有没有发现链表这种数据结构真的使用的很多。
+还是对链表的操作，有没有发现链表这种数据结构真的使用的很多。
 
 ```
 /**
@@ -561,8 +561,7 @@ public static Message obtain() {
 
 ## Handler
 
-Handler在整个handler消息机制中的作用是，Message的发送和处理。
-
+我们讲Handler消息机制，现在终于轮到Handler了，它在整个流程中就是对Message进行发送和处理。
 
 #### Handler构造方法
 
@@ -596,7 +595,7 @@ public Handler(Callback callback, boolean async) {
 
 #### 发送Message
 
-上面说了Handler中处理发送消息和分发消息的任务，下面看看它的具体实现。
+发送消息其实最终就是将根据Message的执行时间，将其插入到MessageQueue中。
 
 ```
 public boolean sendMessageAtTime(Message msg, long uptimeMillis) {
@@ -627,15 +626,12 @@ private boolean enqueueMessage(MessageQueue queue, Message msg, long uptimeMilli
 
 ```
 
-发送消息其实最终就是将Message根据Message的执行时间插入到MessageQueue中，具体可以看[todo]中的逻辑
-
 
 
 #### 分发消息
 
 Looper在调用loop()方法的时候，当遇到符合条件的Message，就会调用Handler的dispatchMessage方法，
-用来分发Message，这用我们我们就可以在Handler中处理Message了。
-
+用来分发Message，这样我们就可以在Handler中处理Message了。
 
 ```
 
@@ -654,5 +650,28 @@ Looper在调用loop()方法的时候，当遇到符合条件的Message，就会�
           handleMessage(msg);
       }
   }
+
+```
+
+## IdleHandler
+
+前面在讲MessageQueue的next的方法的时候见到过IdleHandler，当我们取消息处于阻塞状态的时候，如果添加了IdleHandler，就会处理它，所以我们可以把一些不那么重要的操作放到IdleHandler中执行，这样可以显著的提高性能。比如著名的内存泄漏检测库[leakarary](https://github.com/square/leakcanary)中关于内存泄漏检测的操作就放到了IdleHandler中执行。
+
+
+```
+
+/**
+    * Callback interface for discovering when a thread is going to block
+    * waiting for more messages.
+    */
+   public static interface IdleHandler {
+
+      /**
+        * 在该方法中执行我们需要执行的任务，如果该任务是一次性的则返回false,如果该任务需要多次
+        * 执行则返回true
+        */
+       boolean queueIdle();
+   }
+
 
 ```
