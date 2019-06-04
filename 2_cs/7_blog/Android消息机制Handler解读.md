@@ -8,7 +8,7 @@
 
 ## 概述
 
-在Android系统中使用了很多种通信的方式，比如进程间通信使用的Socket,Binder机制等，但是在相同进程不同线程之间通信再使用这些方式就显得杀鸡用牛了，于是Android使用了一种新的Handler消息机制，有了它我们可以很方便的进行不同线程之间的通信，当然了Handler消息机制也只能限定在同一个进程中。但是，Android系统中关于Handler消息机制的使用却不限于此，比如:android的四大组件，事件机制等都和Handler消息机制密切相关。我们所说的Handler消息机制是由Looper、MessageQueue、Message、Handler等类共同组成的，接下来我们就通过源码研究一下handler消息机制的原理。话不多说，先上张图，下图虽然简单，但是它体现了个handler消息机制最核心的运行流程，在下面枯燥而乏味的源码解读中，大家可以结合这张图去看，思路可能会更清晰些。
+在Android系统中使用了很多种通信的方式，比如进程间通信使用的Socket,Binder机制等，但是在相同进程不同线程之间通信再使用这些方式就显得杀鸡用牛了，于是Android使用了一种新的Handler消息机制，有了它我们可以很方便的进行不同线程之间的通信，当然了Handler消息机制也只能限定在同一个进程中。但是，Android系统中关于Handler消息机制的使用却不限于此，比如:android的四大组件，事件机制等都和Handler消息机制密切相关。我们所说的Handler消息机制是由Looper、MessageQueue、Message、Handler等类共同组成的，接下来就通过源码研究一下handler消息机制的原理。话不多说，先上张图，下图虽然简单，但是它体现了handler消息机制最核心的运行流程，在接下来枯燥而乏味的源码解读中，大家可以结合这张图去看，思路可能会更清晰些。
 
 
 
@@ -18,12 +18,12 @@
 
 
 
-## handler实例
+## Handler实例
 
-下面先看一个我们平时使用handler的例子，通过这个这个例子，我们一步一步去探究handler机制的整个运行的流程。这个例子就是怎么在一个线程中创建handler,可以简单概括为下面的步骤:
+下面先看一个我们平时使用handler的例子，通过这个这个例子，我们一步一步去探究handler机制的整个运行的流程。这个例子就是怎么在一个线程中创建Handler,可以简单概括为下面的步骤:
 
 1. 调用Looper.prepare()方法
-2. 创建handler对象
+2. 创建Handler对象
 3. 调用Looper.loop()方法
 4. 调用Looper的quit方法结束loop
 
@@ -109,7 +109,7 @@ private void handlerTest(){
 
 ```
 除了prepare()方法，还有一个同名的带参数的方法，这个参数判断我们是否可以主动退出loop()循环，等一会我们讲到
-loop()方法的时候会对这个参数有更深的理解。然后prepare方法创建了Looper对象,并将其实例保存在了sThreadLocal这个成员变量中。关于ThreadLocal我会单独写篇文章介绍，这里只要知道ThreadLocal会保存当前线程中的值，并且多个线程之间不会互相干扰。
+loop()方法的时候会对这个参数有更深的理解。然后prepare方法创建了Looper对象,并将其实例保存在了sThreadLocal这个成员变量中。关于ThreadLocal我会单独写篇文章介绍，这里只要知道ThreadLocal会保存当前线程中，并且多个线程之间不会互相干扰。
 
 Looper的构造方法：
 
@@ -152,7 +152,7 @@ private Looper(boolean quitAllowed) {
            Message msg = queue.next(); // 可能会阻塞在这里
            if (msg == null) {
                // No message indicates that the message queue is quitting.
-               //如果没有message说明消息队列正在退出
+               //如果没有message说明消息队列正在退出,比如调用了quit方法时
                return;
            }
 
@@ -211,8 +211,8 @@ private Looper(boolean quitAllowed) {
 ```
 代码比较长，重要的地方我做了注释，这个方法被调用后Looper就启动了，概括一下该方法做的主要工作：
 
-1. 有个for循环，在循环中不断的从消息队列中获取消息，获取方法可能会被阻塞。
-2. 将获取到的Message分发出去， msg.target.dispatchMessage(msg)，这个handler大多数情况就是Handler.
+1. 有个for循环，在循环中不断的从消息队列中获取消息，并且获取的方法可能会被阻塞。
+2. 将获取到的Message分发出去， msg.target.dispatchMessage(msg)，这个target大多数情况就是Handler.
 3. 将Message进行回收，以便可以复用，下文会详细介绍。
 
 
@@ -234,41 +234,16 @@ private Looper(boolean quitAllowed) {
 
 #### quit()和quitSafely()
 
-退出loop调用的方法，其实他真正的实现在MessageQueue中。
+退出loop循环的方法，其实他真正的实现在MessageQueue中。说一下两者的区别，quit方法是将MessageQueue中所有的消息全部清除，然后退出loop, quitSafely方法是将此时此刻，还没有到执行时间的消息清除，但是已经达到执行时间了，但是还没来得及执行的消息会保留,等执行完了再退出loop.
 
 ```
 /**
-    * Quits the looper.
-    * <p>
-    * Causes the {@link #loop} method to terminate without processing any
-    * more messages in the message queue.
-    * </p><p>
-    * Any attempt to post messages to the queue after the looper is asked to quit will fail.
-    * For example, the {@link Handler#sendMessage(Message)} method will return false.
-    * </p><p class="note">
-    * Using this method may be unsafe because some messages may not be delivered
-    * before the looper terminates.  Consider using {@link #quitSafely} instead to ensure
-    * that all pending work is completed in an orderly manner.
-    * </p>
-    *
-    * @see #quitSafely
-    */
+
    public void quit() {
        mQueue.quit(false);
    }
 
-   /**
-    * Quits the looper safely.
-    * <p>
-    * Causes the {@link #loop} method to terminate as soon as all remaining messages
-    * in the message queue that are already due to be delivered have been handled.
-    * However pending delayed messages with due times in the future will not be
-    * delivered before the loop terminates.
-    * </p><p>
-    * Any attempt to post messages to the queue after the looper is asked to quit will fail.
-    * For example, the {@link Handler#sendMessage(Message)} method will return false.
-    * </p>
-    */
+
    public void quitSafely() {
        mQueue.quit(true);
    }
@@ -401,7 +376,7 @@ Message next() {
 
 
 ```
-通过上面的代码，我们知道MessageQueue中维护了一个链表，在从队列中获取消息时，是根据消息的真正执行时间来取出的，如果这段时间空闲，会回调IdleHandler,如果我们设置了它，如果当前的Message的执行时间没到，又没有IdleHandler需要处理，那么程序就会阻塞在这里。看到这里如果大家够细心的话，一定能推测出MessageQueue中的Message一定是按时间排好序的，否则Message的分发顺序就会有问题，排序的逻辑就在enqueueMessage方法中。
+通过上面的代码，我们知道MessageQueue中维护了一个链表，在从队列中获取消息时，是根据消息真正的执行时间来取出的，如果这段时间空闲，也就是获取Message处于阻塞状态的时候，会回调IdleHandler,假使我们设置了它，如果当前的Message的执行时间没到，又没有IdleHandler需要处理，那么程序就会阻塞在这里。看到这里如果大家够细心的话，一定能推测出MessageQueue中的Message一定是按时间排好序的，否则Message的分发顺序就会有问题，排序的逻辑就在enqueueMessage方法中。
 
 
 #### enqueueMessage
