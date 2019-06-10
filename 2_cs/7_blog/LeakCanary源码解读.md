@@ -4,14 +4,14 @@
 
 ## 煤矿中的金丝雀
 
-故事发生在工业革命后的英国，有经验的煤矿工人都会在煤矿巷道中放几只金丝雀，当瓦斯气体超标时，金丝雀会很快死掉，这样煤矿工人能提前得到预警，提前离开巷道。金丝雀的英文名就叫Carary，此后人民把煤矿中的金丝雀作为危险预警的代名词。
+故事发生在工业革命后的英国，有经验的煤矿工人都会在煤矿巷道中放几只金丝雀，当瓦斯气体超标时，金丝雀会很快死掉，这样煤矿工人能提前得到预警，离开巷道。金丝雀的英文名就叫Canary，此后人们把煤矿中的金丝雀作为危险预警的代名词。
 
 > canary in a coal mine
 
 
 ## LeakCanary
 
-回到我们今天的主题，在平时Android开发中，稍不注意就会写出内存泄漏的代码，有些甚至带到了生产环境而我们却浑然不知。是否我们能找一只煤矿中的金丝雀呢，让他监视着我们的代码，及时发现内存的风险。基于上面的需求LeakCanary就粉墨登场了。
+回到我们今天的主题，在平时Android开发中，稍不注意就会写出内存泄漏的代码，有些甚至带到了生产环境而我们却浑然不知。是否我们能找一只煤矿中的金丝雀呢，让他监视着我们的代码，及时发现内存泄漏的风险。基于上面的需求LeakCanary就粉墨登场了。
 
 
 ## 集成LeakCanary
@@ -48,7 +48,7 @@ public class ExampleApplication extends Application {
 
 ```
 
-## LeakCanary.install()方法
+## LeakCanary.install
 
 上面看到了LeakCanary集成的方法，很简单，就调用了install方法。
 
@@ -69,16 +69,16 @@ public class ExampleApplication extends Application {
 总结一下install方法的主要作用：
 
 1. 创建了一个AndroidRefWatcherBuilder对象，一看这个类名就知道它使用了构建者模式，接下来就是这个给这个Builder添加种种配置。
-2. 第一个配置listenerServiceClass，它要求我们传入一个Class类型的Service,其作用是打印我们的leak的信息，并且在通知栏里发出消息，当然了假如我们需要自己处理leak的信息，比如将其上传到服务器，就可以复写这里的
+2. 第一个配置listenerServiceClass，它要求我们传入一个Class类型的Service,其作用是打印我们的leak的信息，并且在通知栏里发出消息，当然了假如我们需要自己处理leak信息，比如将其上传到服务器，就可以复写这里的
 DisplayLeakService，在其afterDefaultHandling方法中做相关的逻辑。
 
-3. excludedRefs 配置的是我们要过滤的内存泄漏信息，比如Android自己的源码中，或者一些手机厂商自定义的rom中存在的内存泄漏，我们是不关心的，或者无能无力的，我们不想让这部分的内存泄漏出现在我们的结果列表中，就需要配置这个选项，当然LeakCanary已经默认了一个已知的列表。当然了你也可以自定义这个列表。
+3. excludedRefs 配置的是我们要过滤的内存泄漏信息，比如Android自己的源码中，或者一些手机厂商自定义的rom中存在的内存泄漏，我们是不关心的，或者无能无力，我们不想让这部分的内存泄漏出现在我们的结果列表中，就需要配置这个选项，当然LeakCanary已经默认了一个已知的列表。当然了你也可以自定义这个列表。
 
 4. 接下来就调用buildAndInstall方法，返回一个RefWatcher对象。
 
 
 
-## AndroidRefWatcherBuilder.buildAndInstall()方法
+## AndroidRefWatcherBuilder.buildAndInstall
 
 ```
 
@@ -121,7 +121,7 @@ DisplayLeakService，在其afterDefaultHandling方法中做相关的逻辑。
 
 ## ActivityRefWatcher.install
 
-下面以activity为例，讲解整个流程，fragment的检测和activity类似。在该方法中主要的操作就是上面所说的registerActivityLifecycleCallbacks了，而检测的开始是从Activity调用OnDestroy的时候开始。
+下面以activity为例，讲解整个流程，fragment的检测和activity类似。在该方法中主要的操作就是上面所说的registerActivityLifecycleCallbacks了，而检测的开始是从Activity调用onDestroy的时候开始。
 
 ```
 
@@ -223,6 +223,7 @@ private void ensureGoneAsync(final long watchStartNanoTime, final KeyedWeakRefer
       long startDumpHeap = System.nanoTime();
       long gcDurationMs = NANOSECONDS.toMillis(startDumpHeap - gcStartNanoTime);
 
+      //dump heap信息到指定的文件中
       File heapDumpFile = heapDumper.dumpHeap();
       if (heapDumpFile == RETRY_LATER) {
         // Could not dump the heap.
@@ -230,13 +231,14 @@ private void ensureGoneAsync(final long watchStartNanoTime, final KeyedWeakRefer
       }
       long heapDumpDurationMs = NANOSECONDS.toMillis(System.nanoTime() - startDumpHeap);
 
+      //保存heap dump中的信息，比如hprof文件、发生内存泄漏的引用、从watch到gc的时间间隔、gc所花的时间、heap dump所花的时间等
       HeapDump heapDump = heapDumpBuilder.heapDumpFile(heapDumpFile).referenceKey(reference.key)
           .referenceName(reference.name)
           .watchDurationMs(watchDurationMs)
           .gcDurationMs(gcDurationMs)
           .heapDumpDurationMs(heapDumpDurationMs)
           .build();
-
+       //启动一个单独进程的service去分析heap dump的结果     
       heapdumpListener.analyze(heapDump);
     }
     return DONE;
@@ -247,11 +249,194 @@ private void ensureGoneAsync(final long watchStartNanoTime, final KeyedWeakRefer
 总结一下上面的流程，首先判断当前引用对象有没有被回收，如果没有被回收则强制虚拟机进行一次gc，之后再判断该引用对象是否被回收，如果还没有，则认为发生了内存泄漏，dump Heap文件，并且对其进行分析。
 
 
+## RefWatcher.removeWeaklyReachableReferences
+
+还记得我们上面创建弱引用时，传入了一个弱引用队列，这个队列中存放着就是已经被回收的对象的引用。通过这个队列，保证retainedKeys中存放的key值对应的引用都是没有被gc回收的。
+
+
+```
+
+private void removeWeaklyReachableReferences() {
+    // WeakReferences are enqueued as soon as the object to which they point to becomes weakly
+    // reachable. This is before finalization or garbage collection has actually happened.
+    KeyedWeakReference ref;
+    while ((ref = (KeyedWeakReference) queue.poll()) != null) {
+      retainedKeys.remove(ref.key);
+    }
+  }
+
+
+```
+
+## AndroidHeapDumper.dumpHeap
+
+该方法的作用是dump heap信息到指定的文件中
+
+```
+
+@SuppressWarnings("ReferenceEquality") // Explicitly checking for named null.
+  @Override @Nullable
+  public File dumpHeap() {
+
+    //创建一个文件，永远存放drump 的heap信息
+    File heapDumpFile = leakDirectoryProvider.newHeapDumpFile();
+
+    if (heapDumpFile == RETRY_LATER) {
+      return RETRY_LATER;
+    }
+
+    FutureResult<Toast> waitingForToast = new FutureResult<>();
+    showToast(waitingForToast);
+
+    if (!waitingForToast.wait(5, SECONDS)) {
+      CanaryLog.d("Did not dump heap, too much time waiting for Toast.");
+      return RETRY_LATER;
+    }
+
+    Notification.Builder builder = new Notification.Builder(context)
+        .setContentTitle(context.getString(R.string.leak_canary_notification_dumping));
+    Notification notification = LeakCanaryInternals.buildNotification(context, builder);
+    NotificationManager notificationManager =
+        (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+    int notificationId = (int) SystemClock.uptimeMillis();
+    notificationManager.notify(notificationId, notification);
+
+    Toast toast = waitingForToast.get();
+    try {
+      //dump heap信息到刚才创建的文件中
+      Debug.dumpHprofData(heapDumpFile.getAbsolutePath());
+      cancelToast(toast);
+      notificationManager.cancel(notificationId);
+      return heapDumpFile;
+    } catch (Exception e) {
+      CanaryLog.d(e, "Could not dump heap");
+      // Abort heap dump
+      return RETRY_LATER;
+    }
+  }
+
+
+
+```
+
+## ServiceHeapDumpListener.analyze
+
+对dump到的heap信息进行分析在一个独立进程的Service中
+
+```
+
+@Override public void analyze(@NonNull HeapDump heapDump) {
+    checkNotNull(heapDump, "heapDump");
+    HeapAnalyzerService.runAnalysis(context, heapDump, listenerServiceClass);
+  }
+
+
+```
+
+```
+
+public static void runAnalysis(Context context, HeapDump heapDump,
+      Class<? extends AbstractAnalysisResultService> listenerServiceClass) {
+    setEnabledBlocking(context, HeapAnalyzerService.class, true);
+    setEnabledBlocking(context, listenerServiceClass, true);
+    Intent intent = new Intent(context, HeapAnalyzerService.class);
+    intent.putExtra(LISTENER_CLASS_EXTRA, listenerServiceClass.getName());
+    intent.putExtra(HEAPDUMP_EXTRA, heapDump);
+    ContextCompat.startForegroundService(context, intent);
+  }
+
+
+```
+
+
+## HeapAnalyzerService.onHandleIntentInForeground
+
+
+```
+
+@Override protected void onHandleIntentInForeground(@Nullable Intent intent) {
+    if (intent == null) {
+      CanaryLog.d("HeapAnalyzerService received a null intent, ignoring.");
+      return;
+    }
+    String listenerClassName = intent.getStringExtra(LISTENER_CLASS_EXTRA);
+    HeapDump heapDump = (HeapDump) intent.getSerializableExtra(HEAPDUMP_EXTRA);
+
+    HeapAnalyzer heapAnalyzer =
+        new HeapAnalyzer(heapDump.excludedRefs, this, heapDump.reachabilityInspectorClasses);
+    //分析heap dump，返回结果
+    AnalysisResult result = heapAnalyzer.checkForLeak(heapDump.heapDumpFile, heapDump.referenceKey,
+        heapDump.computeRetainedHeapSize);
+     //启动一个新的Service用于处理返回的分析结果 
+    AbstractAnalysisResultService.sendResultToListener(this, listenerClassName, heapDump, result);
+  }
+
+```
+
+可见这里任然不是真正的分析处理heap dump的地方，继续往下找。
+
+
+## HeapAnalyzer.checkForLeak
+
+终于终于我们来到了最终分析heap dump的地方，这个方法的主要的作用通过分析heap dump,找到我们发生内存泄漏的引用，然后计算出到GCRoot最短的引用链。对heap dump的分析leakcanary使用了著名的[haha库](https://github.com/square/haha), 不过最新的版本的leakcanary已经自己实现了[heap dump的分析](https://github.com/square/leakcanary/tree/master/leakcanary-haha)。
+
+
+```
+
+/**
+   * Searches the heap dump for a {@link KeyedWeakReference} instance with the corresponding key,
+   * and then computes the shortest strong reference path from that instance to the GC roots.
+   */
+  public @NonNull AnalysisResult checkForLeak(@NonNull File heapDumpFile,
+      @NonNull String referenceKey,
+      boolean computeRetainedSize) {
+    long analysisStartNanoTime = System.nanoTime();
+
+    if (!heapDumpFile.exists()) {
+      Exception exception = new IllegalArgumentException("File does not exist: " + heapDumpFile);
+      return failure(exception, since(analysisStartNanoTime));
+    }
+
+    try {
+      listener.onProgressUpdate(READING_HEAP_DUMP_FILE);
+      HprofBuffer buffer = new MemoryMappedFileBuffer(heapDumpFile);
+      HprofParser parser = new HprofParser(buffer);
+      listener.onProgressUpdate(PARSING_HEAP_DUMP);
+      Snapshot snapshot = parser.parse();
+      listener.onProgressUpdate(DEDUPLICATING_GC_ROOTS);
+      deduplicateGcRoots(snapshot);
+      listener.onProgressUpdate(FINDING_LEAKING_REF);
+      Instance leakingRef = findLeakingReference(referenceKey, snapshot);
+
+      // False alarm, weak reference was cleared in between key check and heap dump.
+      if (leakingRef == null) {
+        String className = leakingRef.getClassObj().getClassName();
+        return noLeak(className, since(analysisStartNanoTime));
+      }
+      return findLeakTrace(analysisStartNanoTime, snapshot, leakingRef, computeRetainedSize);
+    } catch (Throwable e) {
+      return failure(e, since(analysisStartNanoTime));
+    }
+  }
+
+
+```
+
+
+
+
+
+
+
 
 
 ## 参考文献
 
 - [理解Java中的弱引用](https://www.cnblogs.com/absfree/p/5555687.html)
+
+
+
+
 
 
 
