@@ -6,7 +6,7 @@
 
 - [RecyclerView局部刷新和Diff算法](https://github.com/chengfangpeng/Note/blob/master/2_cs/7_blog/RecyclerView%E5%B1%80%E9%83%A8%E5%88%B7%E6%96%B0%E5%92%8CDiff%E7%AE%97%E6%B3%95.md)
 
-- Android消息机制Handler解读
+- [Android消息机制Handler解读](https://github.com/chengfangpeng/Note/blob/master/2_cs/7_blog/Android%E6%B6%88%E6%81%AF%E6%9C%BA%E5%88%B6Handler%E8%A7%A3%E8%AF%BB.md)
 
 
 
