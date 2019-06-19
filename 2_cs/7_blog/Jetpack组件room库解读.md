@@ -2,7 +2,9 @@
 
 ## Jetpack介绍
 
-Jetpack是Android官方提供的一套开发组件的结合，它出现的目的是为了提高我们的开发效率，消除模板代码，构建高质量的强大应用。
+Jetpack是Android官方提供的一套开发组件的结合，它出现的目的是为了提高我们的开发效率，消除模板代码，构建高质量的强大应用。下面是准备分享的计划：
+
+![jetpack](assets/Jetpack.png)
 
 
 ## Room介绍
@@ -556,6 +558,7 @@ Room模板代码的生成是通过注解处理器实现的，具体的源码在[
 ## 参考文档
 
 1. [room源码](https://android.googlesource.com/platform/frameworks/support/+/refs/tags/android-9.0.0_r41/room/)
-2  [room外键](https://www.bignerdranch.com/blog/room-data-storage-for-everyone/)
+2.  [room外键](https://www.bignerdranch.com/blog/room-data-storage-for-everyone/)
+3.  [room存储复杂类型](https://www.jianshu.com/p/9c430196aac6)
 
 
