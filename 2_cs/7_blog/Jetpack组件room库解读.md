@@ -85,7 +85,7 @@ public abstract class AppDatabase extends RoomDatabase {
 自定义一个抽象类,继承RoomDatabase。这里有几个问题需要注意一下：
 
 1. 这个类是个抽象类，因为Room会给出其真正的实现。
-2. 数据库实例的生产比较耗时，所以这个地方建议使用单例
+2. 数据库实例的生成比较耗时，所以这个地方建议使用单例
 3. @Database注解中 entity是要创建的表。
 4. 需要提供获取dao的方法。
 
@@ -258,7 +258,7 @@ public interface UserDao {
 
 插入一条Video数据。
 
-数据都插入了，现在我们获取一下数据。正常的单个表的数据应该是没什么问题的，这里就不演示了。这里只介绍一种情况就是关联查询,前面的内容我们通过外键的形式关联了User和Video。那我们怎么做才能在查询User的时候把关联的Video也同时查询出来呢。Room的做法如下：
+数据都插入了，现在我们获取一下数据。正常的单个表的数据应该是没什么问题的，就不演示了。这里只介绍一种情况就是关联查询,前面的内容我们通过外键的形式关联了User和Video。那我们怎么做才能在查询User的时候把关联的Video也同时查询出来呢。Room的做法如下：
 
 创建一个UserAllVideos类,注意他不是Entity类，没有@Entity注解
 
@@ -300,7 +300,7 @@ List<UserAllVideos> userAllVideos = AppDatabase.getInstance(this).userDao().load
 #### TypeConverter
 
 
-@TypeConverter的作用是转换，比如Room中不允许对象的引用出现，但是我们可以使用TypeConverter去转换，比如上面的User Entity中如果要添加List<Video>这个变量，可以创建个Converters类，定义两个转换方法，里面实现了String和List<Video>之前的相互转换。并且把Converters配置在Database中，代码如下：
+@TypeConverter的作用是转换，比如Room中不允许对象的引用出现，但是我们可以使用TypeConverter去转换，比如上面的User Entity中如果要添加List<Video>这种类型的字段，方法是创建个Converters类，定义两个转换方法，两个方法分别实现了String和List<Video>之前的相互转换。然后把Converters配置在Database中就可以了，代码如下：
 
 
 ```
@@ -361,14 +361,11 @@ Room.databaseBuilder(context.getApplicationContext(), AppDatabase.class, "video.
 
 ```
 
-上面就是Room的基本使用，这个文档只是个入门，涉及到更详细的使用请再查询别的文档。下面简单的介绍一下Room的源码。
-
-
-
 #### 集成RxJava2
 
 Room支持RxJava2，返回的结果可以封装在Flowable中.
 
+上面就是Room的基本使用，这个文档只是个入门，涉及到更详细的使用请再查询别的文档。下面简单的介绍一下Room的源码。
 
 
 
@@ -432,7 +429,7 @@ Room.databaseBuilder(context.getApplicationContext(), AppDatabase.class, "video.
 
 ```
 
-这个方法的主要作用是创建数据库实例，然后初始化配置。在前面的使用部分，我们注意到AppDatabase是个抽象类，那他的真正实现其实在编译期已经生产了，位置在
+这个方法的主要作用是创建数据库实例，然后初始化配置。在前面的使用部分，我们注意到AppDatabase是个抽象类，那他的真正实现其实在编译期已经生成了，位置在
 
 ```
 
@@ -475,7 +472,7 @@ build/generared/source/apt/debug/com.xray.sample.room/AppDatabase_Impl
 ```
 
 
-而真正数据库的装机是在init方法中
+而真正数据库的创建是在init方法中
 
 
 ```
@@ -497,13 +494,13 @@ build/generared/source/apt/debug/com.xray.sample.room/AppDatabase_Impl
 
 ```
 
-在看createOpenHelper这个方法，他的实现在AppDatabase_Impl中，代码很多，主要就是数据库的创建，表的创建，升级处理等。
+createOpenHelper这个方法，他的实现在AppDatabase_Impl中，代码很多，主要就是数据库的创建，表的创建，升级处理等。
 
 
 
 #### Dao方法调用
 
-还是在AppDatabase_Impl这个生产类中，我们找到了两个Dao实例化的地方，这里发现Dao的实现类也是在编译的时候生产的UserDao_Impl和VideoDao_Impl
+还是在AppDatabase_Impl这个生成类中，我们找到了两个Dao实例化的地方，这里发现Dao的实现类也是在编译的时候生成的，UserDao_Impl和VideoDao_Impl
 
 ```
 
@@ -537,10 +534,10 @@ build/generared/source/apt/debug/com.xray.sample.room/AppDatabase_Impl
 
 
 ```
-关于Dao的实现类大家自己去看吧，都是编译生产的模板代码。
+关于Dao的实现类大家自己去看吧，都是编译生成的模板代码。
 
 
-#### 模板代码生产
+#### 模板代码生成
 
 Room模板代码的生成是通过注解处理器实现的，具体的源码在[这里](https://android.googlesource.com/platform/frameworks/support/+/refs/tags/android-9.0.0_r41/room/compiler/src/main/kotlin/androidx/room/RoomProcessor.kt),思路虽然简单，但是要理清里面的细节还是比较麻烦的。
 
