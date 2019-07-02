@@ -557,5 +557,6 @@ Room模板代码的生成是通过注解处理器实现的，具体的源码在[
 1. [room源码](https://android.googlesource.com/platform/frameworks/support/+/refs/tags/android-9.0.0_r41/room/)
 2.  [room外键](https://www.bignerdranch.com/blog/room-data-storage-for-everyone/)
 3.  [room存储复杂类型](https://www.jianshu.com/p/9c430196aac6)
+4.  [room](http://blog.skymxc.com/2018/04/15/Room/)
 
 
