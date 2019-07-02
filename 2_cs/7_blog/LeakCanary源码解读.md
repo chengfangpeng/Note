@@ -424,7 +424,7 @@ public static void runAnalysis(Context context, HeapDump heapDump,
 
 ## 总结
 
-上面已经把LeakCanary的整体流程分析完了，但是由于作者的水平有限，很多细节方面的东西可能没有顾忌到，比如heap dump分析那块的东西其实是很重要的一个部分，如果大家有兴趣，可以着重的看一下。好了这篇文章写到这里了。
+上面已经把LeakCanary的整体流程分析完了，但是由于作者的水平有限，很多细节方面的东西可能没有顾忌到，比如heap dump分析那块的东西其实是很重要的一个部分，如果大家有兴趣，可以着重的看一下。好了,这篇文章就写到这里了。
 
 
 
