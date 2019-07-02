@@ -68,7 +68,7 @@ public class ExampleApplication extends Application {
 
 总结一下install方法的主要作用：
 
-1. 创建了一个AndroidRefWatcherBuilder对象，一看这个类名就知道它使用了构建者模式，接下来就是这个给这个Builder添加种种配置。
+1. 创建了一个AndroidRefWatcherBuilder对象，一看这个类名就知道它使用了构建者模式，接下来就是给这个Builder添加种种配置。
 2. 第一个配置listenerServiceClass，它要求我们传入一个Class类型的Service,其作用是打印我们的leak的信息，并且在通知栏里发出消息，当然了假如我们需要自己处理leak信息，比如将其上传到服务器，就可以复写这里的
 DisplayLeakService，在其afterDefaultHandling方法中做相关的逻辑。
 
@@ -121,7 +121,7 @@ DisplayLeakService，在其afterDefaultHandling方法中做相关的逻辑。
 
 ## ActivityRefWatcher.install
 
-下面以activity为例，讲解整个流程，fragment的检测和activity类似。在该方法中主要的操作就是上面所说的registerActivityLifecycleCallbacks了，而检测的开始是从Activity调用onDestroy的时候开始。
+下面以activity为例，讲解整个流程，fragment的检测和activity类似。在该方法中主要的操作就是上面所说的registerActivityLifecycleCallbacks了，而检测是从Activity的onDestroy方法被调用开始。
 
 ```
 
@@ -321,7 +321,7 @@ private void removeWeaklyReachableReferences() {
 
 ## ServiceHeapDumpListener.analyze
 
-对dump到的heap信息进行分析在一个独立进程的Service中
+对dump到的heap信息进行分析是在一个独立进程的Service中完成的。
 
 ```
 
@@ -373,7 +373,7 @@ public static void runAnalysis(Context context, HeapDump heapDump,
 
 ```
 
-可见这里任然不是真正的分析处理heap dump的地方，继续往下找。
+可见这里仍然不是真正的分析处理heap dump的地方，继续往下找。
 
 
 ## HeapAnalyzer.checkForLeak
@@ -422,8 +422,9 @@ public static void runAnalysis(Context context, HeapDump heapDump,
 
 ```
 
+## 总结
 
-
+上面已经把LeakCanary的整体流程分析完了，但是由于作者的水平有限，很多细节方面的东西可能没有顾忌到，比如heap dump分析那块的东西其实是很重要的一个部分，如果大家有兴趣，可以着重的看一下。好了这篇文章写到这里了。
 
 
 
