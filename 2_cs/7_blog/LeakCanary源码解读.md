@@ -422,6 +422,45 @@ public static void runAnalysis(Context context, HeapDump heapDump,
 
 ```
 
+
+## Q&A
+
+1. LeakCanary中强制gc的方式
+
+这段代码是LeakCanary中采用Android系统源码实现强制gc的方式
+
+```
+
+ GcTrigger DEFAULT = new GcTrigger() {
+    @Override public void runGc() {
+      // Code taken from AOSP FinalizationTest:
+      // https://android.googlesource.com/platform/libcore/+/master/support/src/test/java/libcore/
+      // java/lang/ref/FinalizationTester.java
+      // System.gc() does not garbage collect every time. Runtime.gc() is
+      // more likely to perform a gc.
+      Runtime.getRuntime().gc();
+      enqueueReferences();
+      System.runFinalization();
+    }
+
+    private void enqueueReferences() {
+      // Hack. We don't have a programmatic way to wait for the reference queue daemon to move
+      // references to the appropriate queues.
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException e) {
+        throw new AssertionError();
+      }
+    }
+  };
+
+
+```
+
+但是问题来了，为什么这种方式可以实现强制gc，我的结论是(没有经过验证)虚拟机执行gc的时候，回收的对象需要经历两次标记才能被真正的回收。执行完第一次标记后，虚拟机会判断对象是否复写了finalize()方法，或者是否执行过finalize,如果符合其中一个条件则，不会执行finalize方法。如果被判定需要执行finalize()方法,虚拟机会将该对象加入到名为F-Queue的队列中，并且在一个优先级底的线程中执行对象的finallize()方法。所以需要让线程sleep一会，目的就是等待finallize的执行。之后执行第二次标记，这个时候如果对象没有在finallize中复活，则该对象就会被回收。
+
+
+
 ## 总结
 
 上面已经把LeakCanary的整体流程分析完了，但是由于作者的水平有限，很多细节方面的东西可能没有顾忌到，比如heap dump分析那块的东西其实是很重要的一个部分，如果大家有兴趣，可以着重的看一下。好了,这篇文章就写到这里了。

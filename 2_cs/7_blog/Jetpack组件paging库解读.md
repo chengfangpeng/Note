@@ -3,8 +3,54 @@
 ## 简述
 paging是jetpack中一个处理分页的组件，它和RecyclerView有着很好的兼容性，但是在做TV开发使用Leanback的时候，
 遇到了一些问题，那就是paging中使用的adapter是RecyclerView的adapter,但是leanback中使用的adapter则不是
-RecyclerView中的adapter,所以需要对paging的源码做一定的修改，既然要修改，就需要对paging有个深入的了解。
+,所以需要对paging的源码做一定的修改，既然要修改，就需要对paging有个深入的了解,
 下面就深入paging的源码看看。
+
+
+
+
+![paging原理图](assets/paging_process.gif)
+
+
+
+## DataSource
+
+它是对数据来源的封装，可以是本地数据源（比如：本地数据库Room、Realm等）也可以是远程的接口，也可以两者兼而有之。另外paging还提供了三种不同类型的DataSource，它们都继承了DataSource这个抽象类。
+
+
+#### PositionalDataSource
+
+基于固定大小的数据源，根据position位置去获取数据的方式，例如，在滚动联系人列表中跳转到列表中的特定位置（即跳转到以特定字母开头的联系人）
+
+
+
+#### ItemKeyedDataSource
+
+根据Key去加载特定的Item，比如通过第N个Item的id,去加载第N+1个Item
+
+#### PageKeyedDataSource
+
+根据页码信息去获取item。其中key为页码信息
+
+
+## PagedList
+
+这个类的作用是负责从DataSource中获取数据，然后加载到ui上。它负责怎么加载，比如首页加载和分页加载的配置等。
+
+```
+
+
+
+```
+
+
+## PagedListAdapter
+
+负责ui的展示，和RecyclerView中Adapter的作用类似，但是他会触发加载更多的逻辑。
+
+
+
+
 
 
 ## PagedListAdapter
@@ -237,6 +283,237 @@ submitList方法的使用场景是，当数据集发生变化时，去更新ui�
 
 ```
 
+
+```
+
+ public void loadAround(int index) {
+        mLastLoad = index + getPositionOffset();
+        loadAroundInternal(index);
+
+        mLowestIndexAccessed = Math.min(mLowestIndexAccessed, index);
+        mHighestIndexAccessed = Math.max(mHighestIndexAccessed, index);
+
+        /*
+         * mLowestIndexAccessed / mHighestIndexAccessed have been updated, so check if we need to
+         * dispatch boundary callbacks. Boundary callbacks are deferred until last items are loaded,
+         * and accesses happen near the boundaries.
+         *
+         * Note: we post here, since RecyclerView may want to add items in response, and this
+         * call occurs in PagedListAdapter bind.
+         */
+        tryDispatchBoundaryCallbacks(true);
+    }
+
+
+```
+
+
+#### ContiguousPagedList.loadAroundInternal
+
+
+
+
+```
+
+ @MainThread
+    @Override
+    protected void loadAroundInternal(int index) {
+        int prependItems = mConfig.prefetchDistance - (index - mStorage.getLeadingNullCount());
+        int appendItems = index + mConfig.prefetchDistance
+                - (mStorage.getLeadingNullCount() + mStorage.getStorageCount());
+
+        mPrependItemsRequested = Math.max(prependItems, mPrependItemsRequested);
+        if (mPrependItemsRequested > 0) {
+            schedulePrepend();
+        }
+
+        mAppendItemsRequested = Math.max(appendItems, mAppendItemsRequested);
+        if (mAppendItemsRequested > 0) {
+            //加载更多
+            scheduleAppend();
+        }
+    }
+
+
+```
+
+
+```
+
+@MainThread
+    private void scheduleAppend() {
+        if (mAppendWorkerRunning) {
+            return;
+        }
+        mAppendWorkerRunning = true;
+
+        final int position = mStorage.getLeadingNullCount()
+                + mStorage.getStorageCount() - 1 + mStorage.getPositionOffset();
+
+        // safe to access first item here - mStorage can't be empty if we're appending
+        final V item = mStorage.getLastLoadedItem();
+        mBackgroundThreadExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                if (isDetached()) {
+                    return;
+                }
+                if (mDataSource.isInvalid()) {
+                    detach();
+                } else {
+                    mDataSource.dispatchLoadAfter(position, item, mConfig.pageSize,
+                            mMainThreadExecutor, mReceiver);
+                }
+            }
+        });
+    }
+
+
+```
+
+
+PageKeyedDataSource.dispatchLoadAfter
+
+```
+
+@Override
+    final void dispatchLoadAfter(int currentEndIndex, @NonNull Value currentEndItem,
+            int pageSize, @NonNull Executor mainThreadExecutor,
+            @NonNull PageResult.Receiver<Value> receiver) {
+        @Nullable Key key = getNextKey();
+        if (key != null) {
+            loadAfter(new LoadParams<>(key, pageSize),
+                    new LoadCallbackImpl<>(this, PageResult.APPEND, mainThreadExecutor, receiver));
+        }
+    }
+
+```
+
+这个loadAfter方法就是需要我们自己去实现的，他在一个独立的线程中执行，我们在这个方法中要做的操作就是获取更多数据。然后调用LoadCallbackImpl.onResult的方法
+
+
+```
+
+   public void onResult(@NonNull List<Value> data, @Nullable Key adjacentPageKey) {
+            if (!mCallbackHelper.dispatchInvalidResultIfInvalid()) {
+                if (mCallbackHelper.mResultType == PageResult.APPEND) {
+                    mDataSource.setNextKey(adjacentPageKey);
+                } else {
+                    mDataSource.setPreviousKey(adjacentPageKey);
+                }
+                mCallbackHelper.dispatchResultToReceiver(new PageResult<>(data, 0, 0, 0));
+            }
+        }
+
+
+```
+
+```
+
+
+ @AnyThread
+        public void onPageResult(int resultType, @NonNull PageResult<V> pageResult) {
+            if (pageResult.isInvalid()) {
+                ContiguousPagedList.this.detach();
+            } else if (!ContiguousPagedList.this.isDetached()) {
+                List<V> page = pageResult.page;
+                if (resultType == 0) {
+                    ContiguousPagedList.this.mStorage.init(pageResult.leadingNulls, page, pageResult.trailingNulls, pageResult.positionOffset, ContiguousPagedList.this);
+                    if (ContiguousPagedList.this.mLastLoad == -1) {
+                        ContiguousPagedList.this.mLastLoad = pageResult.leadingNulls + pageResult.positionOffset + page.size() / 2;
+                    }
+                } else if (resultType == 1) {
+                    ContiguousPagedList.this.mStorage.appendPage(page, ContiguousPagedList.this);
+                } else {
+                    if (resultType != 2) {
+                        throw new IllegalArgumentException("unexpected resultType " + resultType);
+                    }
+
+                    ContiguousPagedList.this.mStorage.prependPage(page, ContiguousPagedList.this);
+                }
+
+                if (ContiguousPagedList.this.mBoundaryCallback != null) {
+                    boolean deferEmpty = ContiguousPagedList.this.mStorage.size() == 0;
+                    boolean deferBegin = !deferEmpty && resultType == 2 && pageResult.page.size() == 0;
+                    boolean deferEnd = !deferEmpty && resultType == 1 && pageResult.page.size() == 0;
+                    ContiguousPagedList.this.deferBoundaryCallbacks(deferEmpty, deferBegin, deferEnd);
+                }
+
+            }
+        }
+
+```
+
+
+```
+
+ void appendPage(@NonNull List<T> page, @NonNull Callback callback) {
+        final int count = page.size();
+        if (count == 0) {
+            // Nothing returned from source, stop loading in this direction
+            return;
+        }
+
+        if (mPageSize > 0) {
+            // if the previous page was smaller than mPageSize,
+            // or if this page is larger than the previous, disable tiling
+            if (mPages.get(mPages.size() - 1).size() != mPageSize
+                    || count > mPageSize) {
+                mPageSize = -1;
+            }
+        }
+
+        mPages.add(page);
+        mStorageCount += count;
+
+        final int changedCount = Math.min(mTrailingNullCount, count);
+        final int addedCount = count - changedCount;
+
+        if (changedCount != 0) {
+            mTrailingNullCount -= changedCount;
+        }
+        mNumberAppended += count;
+        callback.onPageAppended(mLeadingNullCount + mStorageCount - count,
+                changedCount, addedCount);
+    }
+
+
+
+```
+
+```
+
+ @MainThread
+    @Override
+    public void onPageAppended(int endPosition, int changedCount, int addedCount) {
+        // consider whether to post more work, now that a page is fully appended
+
+        mAppendItemsRequested = mAppendItemsRequested - changedCount - addedCount;
+        mAppendWorkerRunning = false;
+        if (mAppendItemsRequested > 0) {
+            // not done appending, keep going
+            scheduleAppend();
+        }
+
+        // finally dispatch callbacks, after append may have already been scheduled
+        notifyChanged(endPosition, changedCount);
+        notifyInserted(endPosition + changedCount, addedCount);
+    }
+
+
+
+```
+在这里发现，最终又回到notify***方法中，这个时候加载更多的数据就已经加到RecyclerView里了。
+
+
+
+
+
+
+
+- [](https://www.jianshu.com/p/ff5c711bb7a1)
+- [Exploring Paging Library from Jetpack
+](https://proandroiddev.com/exploring-paging-library-from-jetpack-c661c7399662)
 
 
 
