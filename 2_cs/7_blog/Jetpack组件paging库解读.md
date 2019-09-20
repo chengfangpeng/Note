@@ -9,7 +9,7 @@ paging是jetpack中一个处理分页的组件，它和RecyclerView有着很好�
 
 
 
-![paging原理图](assets/paging_process.gif)
+![](http://ww3.sinaimg.cn/large/006tNc79ly1g4s9n3p4txg30m80ci4ff.gif)
 
 
 
