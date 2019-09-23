@@ -8,6 +8,8 @@
 
 - Android消息机制Handler解读
 
+- View寻焦机制解读
+
 
 
 ## Android优秀库解读
