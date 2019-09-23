@@ -21,11 +21,102 @@
 ```
 > 注意如果编译的是Android6.0只能使用openjdk7，具体的版本可以参考这里
 
+## 安装依赖
+
+todo
+
+
+
 ## 下载源码
+
 Android的源码是使用我们熟悉的Git和Repo两种代码管理工具共同管理的，Git不用介绍了，大家都很熟悉，说说Repo,它是用python开发的一个整合Git仓库的工具，在管理Android源码时，使用Repo往往会简化我们代码管理的工作。
 
 #### 下载repo工具
 
+- Google源(需要能科学上网)
+
+```
+mkdir ~/bin
+PATH=~/bin:$PATH
+curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+chmod a+x ~/bin/repo
+```
+
+如果不能翻墙的同学可以使用清华大学的镜像
+
+- 清华源
+
+```
+curl https://mirrors.tuna.tsinghua.edu.cn/git/git-repo -o ~/bin/repo
+chmod +x ~.bin/repo
+
+```
+
+有时候repo也需要更新，为了使用清华源更新需要将源地址配置到环境变量中。
+
+```
+export REPO_URL='https://mirrors.tuna.tsinghua.edu.cn/git/git-repo/'
+
+```
+
+将上面的内容配置到~/.bashrc文件中，source ~/.bashrc 环境变量就生效了。
+
+#### 初始化仓库
+
+```
+mkdir ~/aosp
+cd aosp
 ```
 
 ```
+repo init -u https://aosp.tuna.tsinghua.edu.cn/platform/manifest -b android-6.0.1_r79
+```
+
+如果想初始化某个特定的android版本可以参考这个[列表](https://source.android.com/setup/start/build-numbers#source-code-tags-and-builds), 但是要注意jdk的版本，要不一会可能编不过。
+
+#### 同步代码
+
+```
+repo sync
+```
+
+这个时候，代码就开始下载了，一般情况下需要几个小时，如果中间出错重复上面的命令就可以了。
+
+
+
+## 编译源码
+
+
+
+#### 设置环境
+
+```
+source build/envsetup.sh
+```
+
+envsetup.sh 脚本中导入了一些很有用的命令，我们可以通过
+
+```
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
