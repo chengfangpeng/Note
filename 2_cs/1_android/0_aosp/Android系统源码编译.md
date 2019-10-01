@@ -134,3 +134,119 @@ hmm
 - godir:   Go to the directory containing a file.
 
 ```
+
+下面简单的介绍一下这几个命令：
+
+- lunch 
+
+  选择编译的类型，直接执行lunch命令，就会列出要编译的类型。编译类型分为下面的类型
+
+  | 编译类型  | 使用情况                                                     |
+  | --------- | ------------------------------------------------------------ |
+  | user      | 权限受限,不能调试，没有root；适用于生产环境                  |
+  | userdebug | 与“user”类似，但具有 root 权限和调试功能；是进行调试时的首选编译类型 |
+  | eng       | 具有额外调试工具的开发配置                                   |
+
+- m
+
+  同make, 编译所有的模块
+
+- mm
+
+  编译单独的模块，需要切换到模块所在的目录
+
+- mmm
+
+  编译单独的模块，不需要切换到模块所在的目录
+
+- croot
+
+  回到源码的根目录
+
+#### 开始编译
+
+```
+make -j 8
+```
+
+-j 参数可以设置并发任务的数量，这个值一般和系统的核心数有关
+
+经过两个多小时的编译，就可以看到编译成功的提示了。
+
+
+
+#### 启动模拟器，运行我们编译出来的系统镜像。
+
+```
+emulator
+```
+
+这样就看到我们编译出来的效果了。
+
+## 单独编译模块
+
+有时候我们修改源码的时候，可能只改了某一个模块，是否需要将整个系统编译一遍呢，google怎么可能会做这种蠢事，答案当然是肯定的。
+
+例如我们想重新编译Setting应用，只需要执行下面的命令
+
+```
+mmm /packages/apps/Setting
+```
+
+之后，重新打包一下system.img文件
+
+```
+make snod
+```
+
+这个命令的作用是快速的构建一个镜像文件，但是,不是所有的情况都使用，它不会检查依赖，如果我们修改了framework层的代码，这种方式就不适用了，因为它有可能会影响到其他的app而不只是Setting.
+
+
+
+## 制作ota升级包
+
+
+
+## 卡刷和线刷
+
+
+
+## 代码实现OTA升级
+
+
+
+
+
+## 资料
+
+- 
+
+## 错误解决
+
+- 错误1
+
+  ```
+  build/core/host_shared_library_internal.mk:51: recipe for target 'out/host/linux-x86/obj/lib/libart.so' failed
+  ```
+
+  解决方法：
+
+  ```
+  在 art/build/Android.common_build.mk 中，找到WITHOUT_HOST_CLANG，将clang关闭
+  
+  # Host.
+  ART_HOST_CLANG := false
+  ifneq ($(WITHOUT_HOST_CLANG),true)
+    # By default, host builds use clang for better warnings.
+    ART_HOST_CLANG := false
+  
+  ```
+
+  
+
+
+
+
+
+
+
