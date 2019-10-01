@@ -1,7 +1,5 @@
 ## 前言
-为什么要编译Android的系统源码:
-1. 为了更彻底的学习Android系统的底层原理
-2. 工作的需要，开发一个冰箱的带屏系统
+AOSP包含了Android系统的整个源码，要想系统的了解Android系统就必须熟悉AOSP。比如Android系统的启动流程，Binder机制，Handler机制等，要想熟悉这些知识都需要深入到AOSP中，今天就从AOSP的编译开始，一步步的深入了解。
 
 ## 环境要求
 |参数|值|
@@ -12,6 +10,7 @@
 |cpu核数|8核|
 |编译的Android版本|6.0|
 |java版本|openjdk7|
+
 
 ## 安装Jdk
 
@@ -137,15 +136,17 @@ hmm
 
 下面简单的介绍一下这几个命令：
 
-- lunch 
+- lunch
 
   选择编译的类型，直接执行lunch命令，就会列出要编译的类型。编译类型分为下面的类型
 
-  | 编译类型  | 使用情况                                                     |
-  | --------- | ------------------------------------------------------------ |
-  | user      | 权限受限,不能调试，没有root；适用于生产环境                  |
-  | userdebug | 与“user”类似，但具有 root 权限和调试功能；是进行调试时的首选编译类型 |
-  | eng       | 具有额外调试工具的开发配置                                   |
+
+ | 编译类型  | 使用情况|
+ |--|--|
+ | user| 权限受限,不能调试，没有root；适用于生产环境|
+ | userdebug | 与“user”类似，但具有 root 权限和调试功能；是进行调试时的首选编译类型 |
+ | eng       | 具有额外调试工具的开发配置 |
+
 
 - m
 
@@ -172,8 +173,18 @@ make -j 8
 -j 参数可以设置并发任务的数量，这个值一般和系统的核心数有关
 
 经过两个多小时的编译，就可以看到编译成功的提示了。
+![emulator](assets/aosp_build_02.bmp)
 
+查看生产的镜像文件:
+```
+cfp@cfp:~/aosp/out/target/product/generic$ ls -l *.img
+-rw-r--r-- 1 cfp cfp   69206016 Oct  1 16:50 cache.img
+-rw-rw-r-- 1 cfp cfp     899484 Sep 22 20:40 ramdisk.img
+-rw-r--r-- 1 cfp cfp 1610612736 Oct  1 16:48 system.img
+-rw-r--r-- 1 cfp cfp  576716800 Sep 22 20:40 userdata.img
+-rw------- 1 cfp cfp  576716800 Oct  1 16:52 userdata-qemu.img
 
+```
 
 #### 启动模拟器，运行我们编译出来的系统镜像。
 
@@ -182,15 +193,22 @@ emulator
 ```
 
 这样就看到我们编译出来的效果了。
+![emulator](assets/aosp_build_01.bmp)
+
+如果想启动emulator,但是想显示界面的话，可以使用下面的命令:
+
+```
+emulator -no-window -noaudio > /dev/null 2>&1 &
+```
 
 ## 单独编译模块
 
 有时候我们修改源码的时候，可能只改了某一个模块，是否需要将整个系统编译一遍呢，google怎么可能会做这种蠢事，答案当然是肯定的。
 
-例如我们想重新编译Setting应用，只需要执行下面的命令
+例如我们想重新编译Launcher2应用，只需要执行下面的命令
 
 ```
-mmm /packages/apps/Setting
+mmm /packages/apps/Launcher2/
 ```
 
 之后，重新打包一下system.img文件
@@ -199,27 +217,39 @@ mmm /packages/apps/Setting
 make snod
 ```
 
-这个命令的作用是快速的构建一个镜像文件，但是,不是所有的情况都使用，它不会检查依赖，如果我们修改了framework层的代码，这种方式就不适用了，因为它有可能会影响到其他的app而不只是Setting.
-
-
-
-## 制作ota升级包
-
-
-
-## 卡刷和线刷
-
-
-
-## 代码实现OTA升级
+这个命令的作用是快速的构建一个镜像文件，但是,不是所有的情况都使用，它不会检查依赖，如果我们修改了framework层的代码，这种方式就不适用了，因为它有可能会影响到其他的app而不只是Launcher2
 
 
 
 
 
-## 资料
+## make clean和clobber的区别
+这两个命令都是清除编译生产的文件，但是clobber更加的严格。
+怎么个严格呢？
 
-- 
+```
+make clean
+```
+等同于
+```
+rm -rf $OUT
+cfp@cfp:~$ echo $OUT
+/home/cfp/aosp/out/target/product/generic
+
+```
+
+而　
+```
+make clobber
+```
+命令等同于
+```
+rm -rf out/
+```
+
+
+
+-
 
 ## 错误解决
 
@@ -233,20 +263,11 @@ make snod
 
   ```
   在 art/build/Android.common_build.mk 中，找到WITHOUT_HOST_CLANG，将clang关闭
-  
+
   # Host.
   ART_HOST_CLANG := false
   ifneq ($(WITHOUT_HOST_CLANG),true)
     # By default, host builds use clang for better warnings.
     ART_HOST_CLANG := false
-  
+
   ```
-
-  
-
-
-
-
-
-
-
