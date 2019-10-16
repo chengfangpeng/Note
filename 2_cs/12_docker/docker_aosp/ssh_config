@@ -1,4 +1,6 @@
-# Somewhat insecure, fork and override as needed.
+Host gome_tv
+        HostName 10.2.53.233
+        Port 29418
+        User chengfangpeng
+        StrictHostKeyChecking no
 Host *
-	#IdentityFile /root/.ssh/id_rsa
-	StrictHostKeyChecking no

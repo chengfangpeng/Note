@@ -27,15 +27,24 @@ cp /root/.gitconfig /home/aosp/.gitconfig && \
 chown aosp:aosp /home/aosp/.gitconfig && \
 mkdir -p /home/aosp/.ssh && \
 cp /root/.ssh/config /home/aosp/.ssh/config && \
-chown aosp:aosp -R /home/aosp/.ssh &&
+cp /root/.ssh/id_rsa /home/aosp/.ssh/id_rsa && \
+cp /root/.ssh/id_rsa.pub /home/aosp/.ssh/id_rsa.pub && \
+chown aosp:aosp -R /home/aosp/.ssh && \
+echo "    IdentityFile ~/.ssh/id_rsa" >> /etc/ssh/ssh_config && \
 echo "$msg - done"
+
+
 
 msg="docker_entrypoint: Creating /tmp/ccache and /aosp directory" && echo $msg
 mkdir -p /tmp/ccache /aosp
 chown aosp:aosp /tmp/ccache /aosp
 echo "$msg - done"
 
-echo ""
+echo "docker_entrypoint:create tv 920 shell"
+chown aosp:aosp -R /home/aosp/
+cp /root/build_tv_920.sh /home/aosp/build_tv_920.sh && \
+chown aosp:aosp /home/aosp/build_tv_920.sh && \
+chmod +x /home/aosp/build_tv_920.sh
 
 # Default to 'bash' if no arguments are provided
 args="$@"

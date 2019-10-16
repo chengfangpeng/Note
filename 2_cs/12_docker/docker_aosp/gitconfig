@@ -1,6 +1,9 @@
 # Provide a default gitconfig to bypass repo init prompts for identity
-[color]
-	ui = auto
 [user]
-	name = Docker AOSP
-	email = aosp@aosp.docker.local
+			name = chengfangpeng
+			email = chengfangpeng@gome.com.cn
+[color]
+			ui = auto
+[core]
+			editor = vi
+			autocrlf = input
