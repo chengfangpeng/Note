@@ -1,5 +1,5 @@
 ## 前言
-AOSP包含了Android系统的整个源码，要想系统的了解Android系统就必须熟悉AOSP。比如Android系统的启动流程，Binder机制，Handler机制等，要想熟悉这些知识都需要深入到AOSP中，今天就从AOSP的编译开始，一步步的深入了解。
+AOSP包含了Android系统的整个源码，要想系统的了解Android系统就必须熟悉AOSP。比如Android系统的启动流程，Binder机制，Handler机制等，而熟悉这些知识都需要深入到AOSP中，今天就从AOSP的编译开始，一步步的深入了解。
 
 ## 环境要求
 |参数|值|
@@ -21,7 +21,7 @@ sudo apt-get update
 sudo apt-get install openjdk-7-jdk
 
 ```
-> 注意如果编译的是Android6.0只能使用openjdk7，具体的版本可以参考这里
+> 注意如果编译的是Android6.0只能使用openjdk7，具体的版本可以参考[这里](https://source.android.com/setup/build/older-versions)
 
 ## 安装依赖
 
@@ -141,11 +141,11 @@ hmm
   选择编译的类型，直接执行lunch命令，就会列出要编译的类型。编译类型分为下面的类型
 
 
- | 编译类型  | 使用情况|
- |--|--|
- | user| 权限受限,不能调试，没有root；适用于生产环境|
- | userdebug | 与“user”类似，但具有 root 权限和调试功能；是进行调试时的首选编译类型 |
- | eng       | 具有额外调试工具的开发配置 |
+| 编译类型  | 使用情况|
+|--|--|
+| user| 权限受限,不能调试，没有root；适用于生产环境|
+| userdebug | 与“user”类似，但具有 root 权限和调试功能；是进行调试时的首选编译类型 |
+| eng       | 具有额外调试工具的开发配置 |
 
 
 - m
@@ -173,7 +173,7 @@ make -j 8
 -j 参数可以设置并发任务的数量，这个值一般和系统的核心数有关
 
 经过两个多小时的编译，就可以看到编译成功的提示了。
-![emulator](assets/aosp_build_02.bmp)
+![emulator](assets/aosp_build_02.png)
 
 查看生产的镜像文件:
 ```
@@ -193,9 +193,9 @@ emulator
 ```
 
 这样就看到我们编译出来的效果了。
-![emulator](assets/aosp_build_01.bmp)
+![emulator](assets/aosp_build_01.png)
 
-如果想启动emulator,但是想显示界面的话，可以使用下面的命令:
+如果想启动emulator,但是不想显示界面的话，可以使用下面的命令:
 
 ```
 emulator -no-window -noaudio > /dev/null 2>&1 &
@@ -203,7 +203,7 @@ emulator -no-window -noaudio > /dev/null 2>&1 &
 
 ## 单独编译模块
 
-有时候我们修改源码的时候，可能只改了某一个模块，是否需要将整个系统编译一遍呢，google怎么可能会做这种蠢事，答案当然是肯定的。
+有时候我们修改源码的时候，可能只改了某一个模块，是否需要将整个系统编译一遍呢，google怎么可能会做这种蠢事，答案当然是否定的。
 
 例如我们想重新编译Launcher2应用，只需要执行下面的命令
 
@@ -217,7 +217,7 @@ mmm /packages/apps/Launcher2/
 make snod
 ```
 
-这个命令的作用是快速的构建一个镜像文件，但是,不是所有的情况都使用，它不会检查依赖，如果我们修改了framework层的代码，这种方式就不适用了，因为它有可能会影响到其他的app而不只是Launcher2
+这个命令的作用是快速的构建一个镜像文件，但是,不是所有的情况都使用，它不会检查依赖，如果我们修改了framework层的代码，这种方式就不适用了，因为它有可能会影响到其他的app而不只是Launcher2。
 
 
 

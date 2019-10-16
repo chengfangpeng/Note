@@ -65,3 +65,18 @@ app进程通过Zygote创建后，会调用ActivityThread.main方法,在main方�
 
 通过这种方式启动进程会调用到RuntimeInit.main中，fork创建进程的方式，采用的是linux copy on write的方式
 会有两次返回，如果pid=0是子进程的返回，如果pid>0，是父进程的返回，当出错时，返回-1
+
+
+
+
+
+
+
+
+
+## 参考文献
+
+[android-boot-process](https://www.geeksforgeeks.org/android-boot-process/)
+
+[the android boot process](https://community.nxp.com/docs/DOC-102546)
+
